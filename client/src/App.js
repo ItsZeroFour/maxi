@@ -96,7 +96,7 @@ function App() {
       ) : (
         userData && (
           <>
-            <p>user_id: {userData.user_id}</p>
+            <p>user_id: {userData.user_token}</p>
             <p>Кол-во попыток: {userData.total_attempts}</p>
 
             <button onClick={incAttempts}>Увеличить попытку (на 1)</button>
