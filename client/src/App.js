@@ -21,11 +21,11 @@ function App() {
       const response = await axios.post("/user/auth", { user_token: result });
 
       if (response.status === 200) {
-        alert(`Вы успешно вошли! Токен: ${response.data.token}`);
+        alert(`Вы успешно вошли! Токен: ${user_token}`);
 
         setUserData(response.data);
 
-        window.localStorage.setItem("token", response.data.token);
+        window.localStorage.setItem("token", user_token);
         setLoginLoading(false);
       }
     } catch (err) {
