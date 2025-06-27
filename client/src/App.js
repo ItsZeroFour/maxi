@@ -59,6 +59,11 @@ function App() {
 
   const incAttempts = async () => {
     try {
+      setUserData(prev => ({
+        ...prev,
+        total_attempts: prev.total_attempts + 1
+      }));
+
       const response = await axios.patch("/user/update-attempts", {
         attempts: [
           {
@@ -68,11 +73,22 @@ function App() {
         ],
       });
 
-      console.log(response);
-
-      if (response.status === 200) {
-        setUserData(response.data);
+    if (response.data.success) {
+      const hasErrors = response.data.errors?.some(
+        error => error.user_token === userData.user_token
+      );
+      
+      if (hasErrors) {
+        setUserData(prev => ({
+          ...prev,
+          total_attempts: prev.total_attempts - 1
+        }));
+        alert("Не удалось увеличить попытки на сервере");
+      } else {
+        const userResponse = await axios.get(`/user/get?user_token=${userData.user_token}`);
+        setUserData(userResponse.data);
       }
+    }
     } catch (err) {
       console.log(err);
       alert("Не удалось увеличить попытку");
