@@ -18,7 +18,7 @@ function App() {
       }
 
       setLoginLoading(true);
-      const response = await axios.post("/user/auth", { user_id: result });
+      const response = await axios.post("/user/auth", { user_token: result });
 
       if (response.status === 200) {
         alert(`Вы успешно вошли! Токен: ${response.data.token}`);
@@ -39,7 +39,9 @@ function App() {
     const getUser = async () => {
       try {
         setUserLoading(true);
-        const response = await axios.get("/user/get");
+        const response = await axios.get(
+          `/user/get?user_token=${window.localStorage.getItem("token")}`
+        );
 
         setUserLoading(false);
 
@@ -58,8 +60,12 @@ function App() {
   const incAttempts = async () => {
     try {
       const response = await axios.patch("/user/update-attempts", {
-        user_id: userData.user_id,
-        attempts: 1,
+        attempts: [
+          {
+            user_token: userData.user_token,
+            count: 1,
+          },
+        ],
       });
 
       console.log(response);
@@ -73,8 +79,6 @@ function App() {
     }
   };
 
-  console.log(userData);
-
   return (
     <div className="App">
       {loginLoading ? (
@@ -82,7 +86,7 @@ function App() {
       ) : (
         <>
           {" "}
-          <p>Кнопка генерирует рандомный user_id</p>
+          <p>Кнопка генерирует рандомный user_token</p>
           <button onClick={login}>Войти</button>
         </>
       )}
