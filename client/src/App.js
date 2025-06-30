@@ -6,6 +6,27 @@ function App() {
   const [userData, setUserData] = useState(null);
   const [userLoading, setUserLoading] = useState(false);
 
+  function setCookie(name, value, daysToLive) {
+    const date = new Date();
+    date.setTime(date.getTime() + daysToLive * 24 * 60 * 60 * 1000);
+    let expires = "expires=" + date.toUTCString();
+    document.cookie = `${name}=${value}; ${expires}; path=/`;
+  }
+
+  function getCookie(name) {
+    const cookieDecoded = decodeURIComponent(document.cookie);
+    const cookieArray = cookieDecoded.split("; ");
+    let result = null;
+
+    cookieArray.forEach((cookie) => {
+      if (cookie.indexOf(name) === 0) {
+        result = cookie.substring(name.length + 1);
+      }
+    });
+
+    return result;
+  }
+
   const login = async () => {
     try {
       const characters =
@@ -25,7 +46,7 @@ function App() {
 
         setUserData(response.data);
 
-        window.localStorage.setItem("token", response.data.user_token);
+        setCookie("token", response.data.user_token, 7);
         setLoginLoading(false);
       }
     } catch (err) {
@@ -40,7 +61,7 @@ function App() {
       try {
         setUserLoading(true);
         const response = await axios.get(
-          `/user/get?user_token=${window.localStorage.getItem("token")}`
+          `/user/get?user_token=${getCookie("token")}`
         );
 
         setUserLoading(false);
@@ -59,9 +80,9 @@ function App() {
 
   const incAttempts = async () => {
     try {
-      setUserData(prev => ({
+      setUserData((prev) => ({
         ...prev,
-        total_attempts: prev.total_attempts + 1
+        total_attempts: prev.total_attempts + 1,
       }));
 
       const response = await axios.patch("/user/update-attempts", {
@@ -73,22 +94,24 @@ function App() {
         ],
       });
 
-    if (response.data.success) {
-      const hasErrors = response.data.errors?.some(
-        error => error.user_token === userData.user_token
-      );
-      
-      if (hasErrors) {
-        setUserData(prev => ({
-          ...prev,
-          total_attempts: prev.total_attempts - 1
-        }));
-        alert("Не удалось увеличить попытки на сервере");
-      } else {
-        const userResponse = await axios.get(`/user/get?user_token=${userData.user_token}`);
-        setUserData(userResponse.data);
+      if (response.data.success) {
+        const hasErrors = response.data.errors?.some(
+          (error) => error.user_token === userData.user_token
+        );
+
+        if (hasErrors) {
+          setUserData((prev) => ({
+            ...prev,
+            total_attempts: prev.total_attempts - 1,
+          }));
+          alert("Не удалось увеличить попытки на сервере");
+        } else {
+          const userResponse = await axios.get(
+            `/user/get?user_token=${userData.user_token}`
+          );
+          setUserData(userResponse.data);
+        }
       }
-    }
     } catch (err) {
       console.log(err);
       alert("Не удалось увеличить попытку");
