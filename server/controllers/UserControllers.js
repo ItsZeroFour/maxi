@@ -43,7 +43,7 @@ export const userGet = async (req, res) => {
 
     const user = await User.findOne({ user_token });
 
-    console.log("user_token из req:", req.user_token);
+    console.log(user_token);
 
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
@@ -76,8 +76,18 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
+        let decoded;
+        try {
+          decoded = jwt.verify(user_token, process.env.JWT_SECRET);
+        } catch (err) {
+          errors.push({ user_token, error: "Невалидный JWT токен" });
+          continue;
+        }
+
+        const userToken = decoded.user_token;
+
         const user = await User.findOneAndUpdate(
-          { user_token },
+          { user_token: userToken },
           { $inc: { total_attempts: count } },
           { new: true }
         );
@@ -88,6 +98,8 @@ export const addAttempts = async (req, res) => {
           errors.push({ user_token, error: "Пользователь не найден" });
         }
       } catch (err) {
+        console.log(err);
+
         errors.push({
           user_token: attempt.user_token,
           error: "Ошибка обработки",

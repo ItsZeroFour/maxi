@@ -34,6 +34,8 @@ function App() {
       setLoginLoading(true);
       const response = await axios.post("/user/auth", { user_token: result });
 
+      console.log(response);
+
       if (response.status === 200) {
         const { token, ...user } = response.data;
         setCookie("token", token, 7);
