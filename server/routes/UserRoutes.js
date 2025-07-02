@@ -6,6 +6,6 @@ const router = express.Router();
 
 router.post("/auth", UserControllers.userAutharization);
 router.get("/get", UserControllers.userGet);
-router.patch("/update-attempts", UserControllers.addAttempts);
+router.patch("/addAttempts", UserControllers.addAttempts);
 
 export default router;

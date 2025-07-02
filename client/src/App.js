@@ -103,7 +103,7 @@ function App() {
         total_attempts: prev.total_attempts + 1,
       }));
 
-      const response = await axios.patch("/user/update-attempts", {
+      const response = await axios.patch("/user/addAttempts", {
         attempts: [
           {
             user_token: userData.user_token,
@@ -154,6 +154,7 @@ function App() {
         userData && (
           <>
             <p>user_id: {userData.user_token}</p>
+            <p>токен: {getCookie("token")}</p>
             <p>Кол-во попыток: {userData.total_attempts}</p>
 
             <button onClick={incAttempts}>Увеличить попытку (на 1)</button>
