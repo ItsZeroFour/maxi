@@ -103,7 +103,7 @@ function App() {
         total_attempts: prev.total_attempts + 1,
       }));
 
-      const response = await axios.patch("/user/addAttempts", {
+      const response = await axios.post("/user/addAttempts", {
         attempts: [
           {
             user_token: userData.user_token,
@@ -166,3 +166,9 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
