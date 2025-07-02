@@ -82,7 +82,7 @@ function App() {
       }));
 
       const response = await axios.post("/user/addAttempts", {
-        attempts: [{ user_token: userData.user_token, count: 1 }],
+        attempts: [{ user_token: getCookie("token"), count: 1 }],
       });
 
       if (response.data.success) {
