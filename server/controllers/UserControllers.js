@@ -11,20 +11,6 @@ export const userAutharization = async (req, res) => {
   try {
     const user_token = req.token;
 
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-
-      try {
-        const decoded = jwt.verify(token, SECRET);
-        user_token = decoded.user_token;
-      } catch (err) {
-        return res
-          .status(401)
-          .json({ error: "Неверный или просроченный токен" });
-      }
-    }
-
     if (!user_token) {
       return res.status(400).json({ error: "user_token не предоставлен" });
     }
