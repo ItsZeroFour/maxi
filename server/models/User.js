@@ -1,9 +1,8 @@
 import mongoose from "mongoose";
 
 const User = new mongoose.Schema({
-  user_token: {
+  user_id: {
     type: String,
-    // required: true,
     default: "",
   },
 

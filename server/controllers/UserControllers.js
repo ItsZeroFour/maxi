@@ -7,22 +7,32 @@ dotenv.config();
 const SECRET = process.env.JWT_SECRET;
 const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
-export const userAutharization = async (req, res) => {
+export const userAuthorization = async (req, res) => {
   try {
-    const user_token = req.token;
+    const authHeader = req.headers.authorization || "";
+    const tokenFromHeader = authHeader.replace(/Bearer\s?/i, "");
+    let userId;
 
-    if (!user_token) {
-      return res.status(400).json({ error: "user_token не предоставлен" });
+    if (tokenFromHeader) {
+      try {
+        const decoded = jwt.verify(tokenFromHeader, SECRET);
+        userId = decoded.user_id;
+      } catch (error) {
+        return res.status(401).json({ message: "Invalid token" });
+      }
+    } else if (req.body.user_id) {
+      userId = req.body.user_id;
+    } else {
+      return res.status(400).json({ message: "No token or user_id provided" });
     }
 
-    let user = await User.findOne({ user_token });
+    let user = await User.findOne({ user_id: userId });
 
     if (!user) {
-      const doc = new User({ user_token });
-      user = await doc.save();
+      user = await new User({ user_id: userId }).save();
     }
 
-    const newToken = jwt.sign({ user_token: user_token }, SECRET, {
+    const newToken = jwt.sign({ user_id: userId }, SECRET, {
       expiresIn: EXPIRES_IN,
     });
 
@@ -35,15 +45,17 @@ export const userAutharization = async (req, res) => {
 
 export const userGet = async (req, res) => {
   try {
-    const user_token = req.token;
+    const user_id = req.user_id;
 
-    if (!user_token) {
-      return res.status(400).json({ error: "user_token не найден в токене" });
+    console.log(user_id);
+
+    if (!user_id) {
+      return res.status(400).json({ error: "user_id не найден в токене" });
     }
 
-    const user = await User.findOne({ user_token });
+    const user = await User.findOne({ user_id });
 
-    console.log(user_token);
+    console.log(user_id);
 
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
@@ -84,10 +96,10 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
-        const userToken = decoded.user_token;
+        const decodedUserId = decoded.user_id;
 
         const user = await User.findOneAndUpdate(
-          { user_token: userToken },
+          { user_id: decodedUserId },
           { $inc: { total_attempts: count } },
           { new: true }
         );
@@ -101,7 +113,7 @@ export const addAttempts = async (req, res) => {
         console.log(err);
 
         errors.push({
-          user_token: attempt.user_token,
+          user_id: attempt.user_id,
           error: "Ошибка обработки",
         });
       }

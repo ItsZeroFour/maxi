@@ -32,7 +32,8 @@ function App() {
       }
 
       setLoginLoading(true);
-      const response = await axios.post("/user/auth", { user_token: result });
+      // В запросе отправляем user_id вместо user_token
+      const response = await axios.post("/user/auth", { user_id: result });
 
       console.log(response);
 
@@ -53,18 +54,29 @@ function App() {
   useEffect(() => {
     const getUser = async () => {
       try {
+        setUserLoading(true);
+
         const token = getCookie("token");
+        if (!token) {
+          setUserLoading(false);
+          return;
+        }
 
-        if (!token) throw new Error("JWT токен не найден");
-
-        const response = await axios.get("/user/get");
+        // Отправляем токен в заголовке авторизации
+        const response = await axios.get("/user/get", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (response.status === 200) {
           setUserData(response.data);
         }
       } catch (err) {
         console.log(err);
-        alert("Не удалось получить пользователя");
+        // alert("Не удалось получить пользователя");
+      } finally {
+        setUserLoading(false);
       }
     };
 
@@ -81,9 +93,18 @@ function App() {
         total_attempts: prev.total_attempts + 1,
       }));
 
-      const response = await axios.post("/user/addAttempts", {
-        attempts: [{ user_token: getCookie("token"), count: 1 }],
-      });
+      // В запросе теперь передаём user_id вместо user_token, из userData
+      const response = await axios.post(
+        "/user/addAttempts",
+        {
+          attempts: [{ user_token: token, count: 1 }],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       if (response.data.success) {
         const hasErrors = response.data.errors?.length > 0;
@@ -114,7 +135,7 @@ function App() {
         <p>Загрузка...</p>
       ) : (
         <>
-          <p>Кнопка генерирует рандомный user_token</p>
+          <p>Кнопка генерирует рандомный user_id</p>
           <button onClick={login}>Войти</button>
         </>
       )}
@@ -124,7 +145,7 @@ function App() {
       ) : (
         userData && (
           <>
-            <p>user_id: {userData.user_token}</p>
+            <p>user_id: {userData.user_id}</p>
             <p>токен: {getCookie("token")}</p>
             <p>Кол-во попыток: {userData.total_attempts}</p>
             <button onClick={incAttempts}>Увеличить попытку (на 1)</button>

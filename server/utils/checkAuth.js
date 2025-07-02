@@ -1,25 +1,20 @@
-import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 
-dotenv.config();
-
 export default (req, res, next) => {
-  const token = (req.headers.authorization || "").replace(/Bearer\s?/, "");
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
 
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.token = decoded.user_token;
+  if (!token) {
+    return res.status(401).json({ message: "Access denied: Token missing" });
+  }
 
-      next();
-    } catch (error) {
-      return res.status(500).send({
-        message: "Access denied",
-      });
-    }
-  } else {
-    return res.status(500).send({
-      message: "Access denied",
-    });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.user_id = decoded.user_id;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Access denied: Invalid token" });
   }
 };
