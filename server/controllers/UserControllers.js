@@ -9,7 +9,7 @@ const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
 export const userAutharization = async (req, res) => {
   try {
-    let { user_token } = req.body;
+    const user_token = req.token;
 
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
