@@ -9,7 +9,7 @@ export default (req, res, next) => {
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.userId = decoded._id;
+      req.userId = decoded.user_token;
 
        next();
     } catch (error) {

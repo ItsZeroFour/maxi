@@ -4,31 +4,46 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// const SECRET = process.env.JWT_SECRET;
-// const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
+const SECRET = process.env.JWT_SECRET;
+const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
 export const userAutharization = async (req, res) => {
   try {
-    const { user_token } = req.body;
+    let { user_token } = req.body;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+
+      try {
+        const decoded = jwt.verify(token, SECRET);
+        user_token = decoded.user_token;
+      } catch (err) {
+        return res
+          .status(401)
+          .json({ error: "Неверный или просроченный токен" });
+      }
+    }
 
     if (!user_token) {
       return res.status(400).json({ error: "user_token не предоставлен" });
     }
 
-    const existingUser = await User.findOne({ user_token });
+    let user = await User.findOne({ user_token });
 
-    if (existingUser) {
-      return res.status(200).json(existingUser._doc);
+    if (!user) {
+      const doc = new User({ user_token });
+      user = await doc.save();
     }
 
-    const doc = new User({ user_token });
-    const user = await doc.save();
-    res.status(200).json(user._doc);
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
-      message: "Ошибка аутентификации",
+    const newToken = jwt.sign({ user_token }, SECRET, {
+      expiresIn: EXPIRES_IN,
     });
+
+    return res.status(200).json({ ...user._doc, token: newToken });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Ошибка аутентификации" });
   }
 };
 
@@ -108,13 +123,3 @@ export const addAttempts = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
-
-
-
-

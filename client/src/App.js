@@ -13,11 +13,6 @@ function App() {
     document.cookie = `${name}=${value}; ${expires}; path=/`;
   }
 
-  /**
-   * Получает значение cookie по имени
-   * @param {string} name - Имя cookie
-   * @returns {string|null} Значение cookie или null, если не найдено
-   */
   const getCookie = (name) => {
     return (
       document.cookie
@@ -34,19 +29,19 @@ function App() {
       let result = "";
 
       for (let i = 0; i < 6; i++) {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        result += characters[randomIndex];
+        result += characters[Math.floor(Math.random() * characters.length)];
       }
 
       setLoginLoading(true);
       const response = await axios.post("/user/auth", { user_token: result });
 
       if (response.status === 200) {
-        alert(`Вы успешно вошли! Токен: ${response.data.user_token}`);
+        const { token, ...user } = response.data;
 
-        setUserData(response.data);
+        setCookie("token", token, 7);
+        setUserData(user);
+        alert(`Вы успешно вошли!`);
 
-        setCookie("token", response.data.user_token, 7);
         setLoginLoading(false);
       }
     } catch (err) {
@@ -57,20 +52,21 @@ function App() {
   };
 
   useEffect(() => {
-    let isMounted = true; // Флаг монтирования компонента
-    const controller = new AbortController(); // способ отмены запросов
+    let isMounted = true;
+    const controller = new AbortController();
 
     const fetchUserData = async () => {
       try {
         setUserLoading(true);
 
         const token = getCookie("token");
-        if (!token) {
-          throw new Error("Токен не найден");
-        }
+        if (!token) throw new Error("JWT токен не найден");
+
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        const user_token = payload.user_token;
 
         const response = await axios.get("/user/get", {
-          params: { user_token: token },
+          params: { user_token },
           signal: controller.signal,
         });
 
@@ -82,9 +78,7 @@ function App() {
           console.error("Ошибка:", error.message);
         }
       } finally {
-        if (isMounted) {
-          setUserLoading(false);
-        }
+        if (isMounted) setUserLoading(false);
       }
     };
 
@@ -92,12 +86,18 @@ function App() {
 
     return () => {
       isMounted = false;
-      controller.abort(); // Отмена запроса при размонтировании
+      controller.abort();
     };
   }, []);
 
   const incAttempts = async () => {
     try {
+      const token = getCookie("token");
+      if (!token) return alert("Нет токена");
+
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      const user_token = payload.user_token;
+
       setUserData((prev) => ({
         ...prev,
         total_attempts: prev.total_attempts + 1,
@@ -106,7 +106,7 @@ function App() {
       const response = await axios.post("/user/addAttempts", {
         attempts: [
           {
-            user_token: userData.user_token,
+            user_token,
             count: 1,
           },
         ],
@@ -114,7 +114,7 @@ function App() {
 
       if (response.data.success) {
         const hasErrors = response.data.errors?.some(
-          (error) => error.user_token === userData.user_token
+          (e) => e.user_token === user_token
         );
 
         if (hasErrors) {
@@ -122,17 +122,17 @@ function App() {
             ...prev,
             total_attempts: prev.total_attempts - 1,
           }));
-          alert("Не удалось увеличить попытки на сервере");
+          alert("Не удалось увеличить попытки");
         } else {
-          const userResponse = await axios.get(
-            `/user/get?user_token=${userData.user_token}`
-          );
+          const userResponse = await axios.get("/user/get", {
+            params: { user_token },
+          });
           setUserData(userResponse.data);
         }
       }
     } catch (err) {
       console.log(err);
-      alert("Не удалось увеличить попытку");
+      alert("Ошибка при увеличении попыток");
     }
   };
 
@@ -142,7 +142,6 @@ function App() {
         <p>Загрузка...</p>
       ) : (
         <>
-          {" "}
           <p>Кнопка генерирует рандомный user_token</p>
           <button onClick={login}>Войти</button>
         </>
@@ -156,7 +155,6 @@ function App() {
             <p>user_id: {userData.user_token}</p>
             <p>токен: {getCookie("token")}</p>
             <p>Кол-во попыток: {userData.total_attempts}</p>
-
             <button onClick={incAttempts}>Увеличить попытку (на 1)</button>
           </>
         )
@@ -166,9 +164,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
-
-
