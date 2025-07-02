@@ -13,19 +13,19 @@ function App() {
     document.cookie = `${name}=${value}; ${expires}; path=/`;
   }
 
-  function getCookie(name) {
-    const cookieDecoded = decodeURIComponent(document.cookie);
-    const cookieArray = cookieDecoded.split("; ");
-    let result = null;
-
-    cookieArray.forEach((cookie) => {
-      if (cookie.indexOf(name) === 0) {
-        result = cookie.substring(name.length + 1);
-      }
-    });
-
-    return result;
-  }
+  /**
+   * Получает значение cookie по имени
+   * @param {string} name - Имя cookie
+   * @returns {string|null} Значение cookie или null, если не найдено
+   */
+  const getCookie = (name) => {
+    return (
+      document.cookie
+        .split("; ")
+        .find((row) => row.startsWith(`${name}=`))
+        ?.split("=")[1] ?? null
+    );
+  };
 
   const login = async () => {
     try {
@@ -57,25 +57,43 @@ function App() {
   };
 
   useEffect(() => {
-    const getUser = async () => {
+    let isMounted = true; // Флаг монтирования компонента
+    const controller = new AbortController(); // способ отмены запросов
+
+    const fetchUserData = async () => {
       try {
         setUserLoading(true);
-        const response = await axios.get(
-          `/user/get?user_token=${getCookie("token")}`
-        );
 
-        setUserLoading(false);
+        const token = getCookie("token");
+        if (!token) {
+          throw new Error("Токен не найден");
+        }
 
-        if (response.status === 200) {
+        const response = await axios.get("/user/get", {
+          params: { user_token: token },
+          signal: controller.signal,
+        });
+
+        if (isMounted && response.data) {
           setUserData(response.data);
         }
-      } catch (err) {
-        setUserLoading(false);
-        console.log(err);
+      } catch (error) {
+        if (isMounted) {
+          console.error("Ошибка:", error.message);
+        }
+      } finally {
+        if (isMounted) {
+          setUserLoading(false);
+        }
       }
     };
 
-    getUser();
+    fetchUserData();
+
+    return () => {
+      isMounted = false;
+      controller.abort(); // Отмена запроса при размонтировании
+    };
   }, []);
 
   const incAttempts = async () => {
