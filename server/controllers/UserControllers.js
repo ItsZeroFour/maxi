@@ -36,7 +36,7 @@ export const userAutharization = async (req, res) => {
       user = await doc.save();
     }
 
-    const newToken = jwt.sign({ user_token }, SECRET, {
+    const newToken = jwt.sign({ user_token: user_token }, SECRET, {
       expiresIn: EXPIRES_IN,
     });
 
@@ -49,26 +49,24 @@ export const userAutharization = async (req, res) => {
 
 export const userGet = async (req, res) => {
   try {
-    const { user_token } = req.query;
+    const user_token = req.token;
 
     if (!user_token) {
-      return res.status(400).json({ error: "user_token не предоставлен" });
+      return res.status(400).json({ error: "user_token не найден в токене" });
     }
 
     const user = await User.findOne({ user_token });
 
+    console.log("user_token из req:", req.user_token);
+
     if (!user) {
-      return res.status(404).json({
-        message: "Пользователь не найден",
-      });
+      return res.status(404).json({ message: "Пользователь не найден" });
     }
 
     return res.status(200).json(user._doc);
   } catch (err) {
     console.log(err);
-    res.status(500).json({
-      message: "Ошибка получения пользователя",
-    });
+    res.status(500).json({ message: "Ошибка получения пользователя" });
   }
 };
 

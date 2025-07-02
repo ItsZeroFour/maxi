@@ -27,7 +27,6 @@ function App() {
       const characters =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
       let result = "";
-
       for (let i = 0; i < 6; i++) {
         result += characters[Math.floor(Math.random() * characters.length)];
       }
@@ -37,57 +36,37 @@ function App() {
 
       if (response.status === 200) {
         const { token, ...user } = response.data;
-
         setCookie("token", token, 7);
         setUserData(user);
         alert(`Вы успешно вошли!`);
-
-        setLoginLoading(false);
       }
     } catch (err) {
       console.log(err);
-      setLoginLoading(false);
       alert("Не удалось войти");
+    } finally {
+      setLoginLoading(false);
     }
   };
 
   useEffect(() => {
-    let isMounted = true;
-    const controller = new AbortController();
-
-    const fetchUserData = async () => {
+    const getUser = async () => {
       try {
-        setUserLoading(true);
-
         const token = getCookie("token");
+
         if (!token) throw new Error("JWT токен не найден");
 
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        const user_token = payload.user_token;
+        const response = await axios.get("/user/get");
 
-        const response = await axios.get("/user/get", {
-          params: { user_token },
-          signal: controller.signal,
-        });
-
-        if (isMounted && response.data) {
+        if (response.status === 200) {
           setUserData(response.data);
         }
-      } catch (error) {
-        if (isMounted) {
-          console.error("Ошибка:", error.message);
-        }
-      } finally {
-        if (isMounted) setUserLoading(false);
+      } catch (err) {
+        console.log(err);
+        alert("Не удалось получить пользователя");
       }
     };
 
-    fetchUserData();
-
-    return () => {
-      isMounted = false;
-      controller.abort();
-    };
+    getUser();
   }, []);
 
   const incAttempts = async () => {
@@ -95,28 +74,17 @@ function App() {
       const token = getCookie("token");
       if (!token) return alert("Нет токена");
 
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const user_token = payload.user_token;
-
       setUserData((prev) => ({
         ...prev,
         total_attempts: prev.total_attempts + 1,
       }));
 
       const response = await axios.post("/user/addAttempts", {
-        attempts: [
-          {
-            user_token,
-            count: 1,
-          },
-        ],
+        attempts: [{ user_token: userData.user_token, count: 1 }],
       });
 
       if (response.data.success) {
-        const hasErrors = response.data.errors?.some(
-          (e) => e.user_token === user_token
-        );
-
+        const hasErrors = response.data.errors?.length > 0;
         if (hasErrors) {
           setUserData((prev) => ({
             ...prev,
@@ -125,7 +93,9 @@ function App() {
           alert("Не удалось увеличить попытки");
         } else {
           const userResponse = await axios.get("/user/get", {
-            params: { user_token },
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
           });
           setUserData(userResponse.data);
         }

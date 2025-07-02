@@ -5,7 +5,7 @@ import checkAuth from "../utils/checkAuth.js";
 const router = express.Router();
 
 router.post("/auth", UserControllers.userAutharization);
-router.get("/get", UserControllers.userGet);
-router.post("/addAttempts", checkAuth, UserControllers.addAttempts);
+router.get("/get", checkAuth, UserControllers.userGet);
+router.post("/addAttempts", UserControllers.addAttempts);
 
 export default router;
