@@ -1,41 +1,27 @@
 import User from "../models/User.js";
-import jwt from "jsonwebtoken";
+// import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const SECRET = process.env.JWT_SECRET;
-const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
+// const SECRET = process.env.JWT_SECRET;
+// const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
 export const userAuthorization = async (req, res) => {
   try {
-    let userId;
-
-    const userToken = req.body.user_token || req.headers.authorization?.replace(/Bearer\s?/i, "");
-
-    if (!userToken) {
-      return res.status(400).json({ message: "Требуется user_token или Authorization header" });
-    }
-
-    const decoded = jwt.decode(userToken);
+    const userToken = req.body.user_token;
     
-    if (!decoded || !decoded.user_id) {
-      return res.status(401).json({ message: "Невалидный токен" });
+    if (!userToken) {
+      return res.status(400).json({ message: "Требуется user_token в теле запроса" });
     }
 
-    userId = decoded.user_id;
-
-    let user = await User.findOne({ user_id: userId });
+    let user = await User.findOne({ user_token: userToken });
 
     if (!user) {
-      user = await new User({ user_id: userId }).save();
+      user = await new User({ user_token: userToken }).save();
     }
 
-    const newToken = jwt.sign({ user_id: userId }, SECRET, {
-      expiresIn: EXPIRES_IN,
-    });
-
-    return res.status(200).json({ ...user._doc, token: newToken });
+    return res.status(200).json({ ...user._doc });
 
   } catch (err) {
     console.error(err);
@@ -86,31 +72,17 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
-        let decoded;
-        try {
-          decoded = jwt.decode(user_token); // <-- Изменено с verify() на decode()
-
-          if (!decoded || !decoded.user_id) {
-            errors.push({ user_token, error: "Невалидный JWT токен" });
-            continue;
-          }
-        } catch (err) {
-          errors.push({ user_token, error: "Ошибка декодирования токена" });
-          continue;
-        }
-
-        const decodedUserId = decoded.user_id;
-
+        // Работаем с чистым user_token без декодирования
         const user = await User.findOneAndUpdate(
-          { user_id: decodedUserId },
+          { user_token: user_token }, // Ищем по user_token
           { $inc: { total_attempts: count } },
-          { new: true }
+          { new: true, upsert: true } // Добавляем upsert для создания пользователя, если не найден
         );
 
         if (user) {
           results.push({ user_token, success: true });
         } else {
-          errors.push({ user_token, error: "Пользователь не найден" });
+          errors.push({ user_token, error: "Ошибка обновления пользователя" });
         }
       } catch (err) {
         console.log(err);

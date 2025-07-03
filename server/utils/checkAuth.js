@@ -1,6 +1,10 @@
 import jwt from "jsonwebtoken";
 
-export default (req, res, next) => {
+/**
+ * Middleware для проверки серверного секретного токена в заголовках Authorization.
+ * Ожидается заголовок: Authorization: Bearer <JWT-с токеном, содержащим поле `secret`>
+ */
+export default function serverAuthMiddleware(req, res, next) {
   const authHeader = req.headers.authorization || "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
 
@@ -11,10 +15,16 @@ export default (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user_id = decoded.user_id;
+    if (decoded.secret !== process.env.SERVER_SECRET) {
+      return res
+        .status(403)
+        .json({ message: "Access denied: Invalid server secret" });
+    }
 
     next();
-  } catch (error) {
-    return res.status(401).json({ message: "Access denied: Invalid token" });
+  } catch (err) {
+    return res
+      .status(401)
+      .json({ message: "Access denied: Invalid or expired token" });
   }
-};
+}
