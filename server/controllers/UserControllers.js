@@ -9,21 +9,26 @@ const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
 export const userAuthorization = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization || "";
-    const tokenFromHeader = authHeader.replace(/Bearer\s?/i, "");
     let userId;
 
-    if (tokenFromHeader) {
+    if (req.body.user_id) {
+      userId = req.body.user_id;
+    } else {
+      const authHeader = req.headers.authorization || "";
+      const tokenFromHeader = authHeader.replace(/Bearer\s?/i, "");
+
+      if (!tokenFromHeader) {
+        return res
+          .status(400)
+          .json({ message: "No user_id or token provided" });
+      }
+
       try {
         const decoded = jwt.verify(tokenFromHeader, SECRET);
         userId = decoded.user_id;
       } catch (error) {
         return res.status(401).json({ message: "Invalid token" });
       }
-    } else if (req.body.user_id) {
-      userId = req.body.user_id;
-    } else {
-      return res.status(400).json({ message: "No token or user_id provided" });
     }
 
     let user = await User.findOne({ user_id: userId });

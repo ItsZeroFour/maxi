@@ -12,6 +12,7 @@ import multer from "multer";
 
 /* ROUTES */
 import userRoutes from "./routes/UserRoutes.js";
+import AttemptsRoutes from './routes/AttemptsRoutes.js'
 
 dotenv.config({ path: "./.env" });
 const app = express();
@@ -73,6 +74,7 @@ app.post("/upload", upload.single("image"), (req, res) => {
 
 /* ROUTES */
 app.use("/user", userRoutes);
+app.use("/", AttemptsRoutes)
 
 /* START FUNCTION */
 async function start() {
