@@ -11,25 +11,19 @@ export const userAuthorization = async (req, res) => {
   try {
     let userId;
 
-    if (req.body.user_id) {
-      userId = req.body.user_id;
-    } else {
-      const authHeader = req.headers.authorization || "";
-      const tokenFromHeader = authHeader.replace(/Bearer\s?/i, "");
+    const userToken = req.body.user_token || req.headers.authorization?.replace(/Bearer\s?/i, "");
 
-      if (!tokenFromHeader) {
-        return res
-          .status(400)
-          .json({ message: "No user_id or token provided" });
-      }
-
-      try {
-        const decoded = jwt.verify(tokenFromHeader, SECRET);
-        userId = decoded.user_id;
-      } catch (error) {
-        return res.status(401).json({ message: "Invalid token" });
-      }
+    if (!userToken) {
+      return res.status(400).json({ message: "Требуется user_token или Authorization header" });
     }
+
+    const decoded = jwt.decode(userToken);
+    
+    if (!decoded || !decoded.user_id) {
+      return res.status(401).json({ message: "Невалидный токен" });
+    }
+
+    userId = decoded.user_id;
 
     let user = await User.findOne({ user_id: userId });
 
@@ -42,9 +36,10 @@ export const userAuthorization = async (req, res) => {
     });
 
     return res.status(200).json({ ...user._doc, token: newToken });
+
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Ошибка аутентификации" });
+    return res.status(500).json({ message: "Ошибка сервера при авторизации" });
   }
 };
 
