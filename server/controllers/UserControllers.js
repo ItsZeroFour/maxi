@@ -86,37 +86,26 @@ export const addAttempts = async (req, res) => {
 
     for (const attempt of attempts) {
       try {
-        const { user_token, count } = attempt;
+        const { user_id, count } = attempt;
 
-        if (!user_token || typeof count !== "number") {
-          errors.push({ user_token, error: "Неверные данные" });
+        if (!user_id || typeof count !== "number") {
+          errors.push({ user_id, error: "Неверные данные" });
           continue;
         }
-
-        let decoded;
-        try {
-          decoded = jwt.verify(user_token, process.env.JWT_SECRET);
-        } catch (err) {
-          errors.push({ user_token, error: "Невалидный JWT токен" });
-          continue;
-        }
-
-        const decodedUserId = decoded.user_id;
 
         const user = await User.findOneAndUpdate(
-          { user_id: decodedUserId },
+          { user_id },
           { $inc: { total_attempts: count } },
           { new: true }
         );
 
         if (user) {
-          results.push({ user_token, success: true });
+          results.push({ user_id, success: true });
         } else {
-          errors.push({ user_token, error: "Пользователь не найден" });
+          errors.push({ user_id, error: "Пользователь не найден" });
         }
       } catch (err) {
         console.log(err);
-
         errors.push({
           user_id: attempt.user_id,
           error: "Ошибка обработки",
