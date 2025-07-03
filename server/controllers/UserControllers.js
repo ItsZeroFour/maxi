@@ -52,8 +52,6 @@ export const userGet = async (req, res) => {
   try {
     const user_id = req.user_id;
 
-    console.log(user_id);
-
     if (!user_id) {
       return res.status(400).json({ error: "user_id не найден в токене" });
     }
@@ -86,28 +84,43 @@ export const addAttempts = async (req, res) => {
 
     for (const attempt of attempts) {
       try {
-        const { user_id, count } = attempt;
+        const { user_token, count } = attempt;
 
-        if (!user_id || typeof count !== "number") {
-          errors.push({ user_id, error: "Неверные данные" });
+        if (!user_token || typeof count !== "number") {
+          errors.push({ user_token, error: "Неверные данные" });
           continue;
         }
 
+        let decoded;
+        try {
+          decoded = jwt.decode(user_token); // <-- Изменено с verify() на decode()
+
+          if (!decoded || !decoded.user_id) {
+            errors.push({ user_token, error: "Невалидный JWT токен" });
+            continue;
+          }
+        } catch (err) {
+          errors.push({ user_token, error: "Ошибка декодирования токена" });
+          continue;
+        }
+
+        const decodedUserId = decoded.user_id;
+
         const user = await User.findOneAndUpdate(
-          { user_id },
+          { user_id: decodedUserId },
           { $inc: { total_attempts: count } },
           { new: true }
         );
 
         if (user) {
-          results.push({ user_id, success: true });
+          results.push({ user_token, success: true });
         } else {
-          errors.push({ user_id, error: "Пользователь не найден" });
+          errors.push({ user_token, error: "Пользователь не найден" });
         }
       } catch (err) {
         console.log(err);
         errors.push({
-          user_id: attempt.user_id,
+          user_token: attempt.user_token,
           error: "Ошибка обработки",
         });
       }
