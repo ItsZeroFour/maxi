@@ -72,11 +72,17 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
-        // Работаем с чистым user_token без декодирования
+        const existingUser = await User.findOne({ user_token: user_token });
+        
+        if (!existingUser) {
+          errors.push({ user_token, error: "Пользователь не найден" });
+          continue;
+        }
+
         const user = await User.findOneAndUpdate(
-          { user_token: user_token }, // Ищем по user_token
+          { user_token: user_token },
           { $inc: { total_attempts: count } },
-          { new: true, upsert: true } // Добавляем upsert для создания пользователя, если не найден
+          { new: true }
         );
 
         if (user) {
