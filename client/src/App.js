@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "./utils/axios";
+import "./maxiGame";
 
 function App() {
   const [loginLoading, setLoginLoading] = useState(false);
@@ -131,6 +132,12 @@ function App() {
 
   return (
     <div className="App">
+      <button onClick={() => window.MaxiGame.closeGame()}>Закрыть игру</button>
+      <button
+        onClick={() => window.MaxiGame.activatePromoCode("YOUR_PROMO_CODE")}
+      >
+        Активировать промокод
+      </button>
       {loginLoading ? (
         <p>Загрузка...</p>
       ) : (
