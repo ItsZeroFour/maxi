@@ -6,9 +6,10 @@ import checkToken from "../utils/checkToken.js";
 const router = express.Router();
 
 router.post("/auth", checkAuth, UserControllers.userAuthorization);
-router.get("/get", UserControllers.userGet);
+router.get("/get", checkToken, UserControllers.userGet);
 router.post("/level-complete/:level", checkToken, UserControllers.levelComplete)
-router.post("/complete-onbording", checkToken, UserControllers.completeOnbording)
-router.post("/activate-promocode", checkToken, UserControllers.activatePromocode)
+router.post("/complete-onbording", checkToken, UserControllers.completeOnbording)  
+router.post("/activate-promocode", checkToken, UserControllers.activatePromocode)  
+router.post("/level-start", checkToken, UserControllers.levelStart)  
 
 export default router;

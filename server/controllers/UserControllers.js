@@ -31,15 +31,13 @@ export const userAuthorization = async (req, res) => {
 
 export const userGet = async (req, res) => {
   try {
-    const user_id = req.user_id;
+    const user_token = req.user_token;
 
-    if (!user_id) {
-      return res.status(400).json({ error: "user_id не найден в токене" });
+    if (!user_token) {
+      return res.status(400).json({ error: "user_token не найден в токене" });
     }
 
-    const user = await User.findOne({ user_id });
-
-    console.log(user_id);
+    const user = await User.findOne({ user_token });
 
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
@@ -112,6 +110,45 @@ export const addAttempts = async (req, res) => {
   }
 };
 
+export const levelStart = async (req, res) => {
+  try {
+    const user_token = req.user_token;
+
+    const user = await User.findById(user_token);
+
+    if (!user) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    if (user.default_attempts > 0) {
+      user.default_attempts -= 1;
+    } else if (user.maxi_attempts > 0) {
+      user.maxi_attempts -= 1;
+    } else {
+      return res.status(400).json({
+        message: "Нет доступных попыток",
+        isLevelStart: false,
+        default_attempts: user.default_attempts,
+        maxi_attempts: user.maxi_attempts,
+      });
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Уровень начат",
+      isLevelStart: true,
+      default_attempts: user.default_attempts,
+      maxi_attempts: user.maxi_attempts,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: "Не удалось начать уровень",
+    });
+  }
+};
+
 export const levelComplete = async (req, res) => {
   try {
     const levelCount = req.params.level;
@@ -120,7 +157,7 @@ export const levelComplete = async (req, res) => {
     const user = await User.findOne({ user_token: token });
 
     if (user.promo_codes.includes(promocodes[levelCount])) {
-      return res.status(301).json({
+      return res.status(201).json({
         message: "Промокод уже получен",
         is_promocode_get: false,
         promocode: "",
@@ -131,11 +168,16 @@ export const levelComplete = async (req, res) => {
     await User.findOneAndUpdate(
       { user_token: token },
       {
-        $push: { promo_codes: promocodes[levelCount] },
+        $push: {
+          promo_codes: promocodes[levelCount],
+          completedLevels: {
+            level: levelCount,
+          },
+        },
       }
     );
 
-    return res.status(301).json({
+    return res.status(201).json({
       message: "Промокод получен",
       is_promocode_get: true,
       promocode: promocodes[levelCount],
@@ -153,12 +195,13 @@ export const completeOnbording = async (req, res) => {
   try {
     const user_token = req.user_token;
 
-    const user = User.findOneAndUpdate(
+    const user = await User.findOneAndUpdate(
       { user_token },
       {
         onbording_complete: true,
-      }
-    );
+      },
+      { new: true }
+    ).lean();
 
     return res.status(200).json(user);
   } catch (err) {

@@ -23,6 +23,13 @@ const User = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+
+  completedLevels: [
+    {
+      level: { type: Number, min: 1, max: 30 },
+      timestamp: { type: Date, default: Date.now },
+    },
+  ],
 });
 
 export default mongoose.model("User", User);
