@@ -6,13 +6,23 @@ const User = new mongoose.Schema({
     default: "",
   },
 
-  total_attempts: {
+  promo_codes: [String],
+  activated_promo_codes: [String],
+
+  default_attempts: {
     type: Number,
-    // required: true,
+    default: 2,
+  },
+
+  maxi_attempts: {
+    type: Number,
     default: 0,
   },
 
-  promo_codes: [String],
+  onbording_complete: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 export default mongoose.model("User", User);

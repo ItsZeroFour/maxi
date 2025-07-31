@@ -1,18 +1,19 @@
 import User from "../models/User.js";
-// import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import { promocodes } from "../data/promocodes.js";
+import fs from "fs";
+import stompit from "stompit";
 
 dotenv.config();
-
-// const SECRET = process.env.JWT_SECRET;
-// const EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 
 export const userAuthorization = async (req, res) => {
   try {
     const userToken = req.body.user_token;
-    
+
     if (!userToken) {
-      return res.status(400).json({ message: "Требуется user_token в теле запроса" });
+      return res
+        .status(400)
+        .json({ message: "Требуется user_token в теле запроса" });
     }
 
     let user = await User.findOne({ user_token: userToken });
@@ -22,7 +23,6 @@ export const userAuthorization = async (req, res) => {
     }
 
     return res.status(200).json({ ...user._doc });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Ошибка сервера при авторизации" });
@@ -73,7 +73,7 @@ export const addAttempts = async (req, res) => {
         }
 
         const existingUser = await User.findOne({ user_token: user_token });
-        
+
         if (!existingUser) {
           errors.push({ user_token, error: "Пользователь не найден" });
           continue;
@@ -81,7 +81,7 @@ export const addAttempts = async (req, res) => {
 
         const user = await User.findOneAndUpdate(
           { user_token: user_token },
-          { $inc: { total_attempts: count } },
+          { $inc: { maxi_attempts: count } },
           { new: true }
         );
 
@@ -108,6 +108,139 @@ export const addAttempts = async (req, res) => {
     console.log(err);
     res.status(500).json({
       message: "Ошибка сервера при обработке попыток",
+    });
+  }
+};
+
+export const levelComplete = async (req, res) => {
+  try {
+    const levelCount = req.params.level;
+    const token = req.user_token;
+
+    const user = await User.findOne({ user_token: token });
+
+    if (user.promo_codes.includes(promocodes[levelCount])) {
+      return res.status(301).json({
+        message: "Промокод уже получен",
+        is_promocode_get: false,
+        promocode: "",
+        token,
+      });
+    }
+
+    await User.findOneAndUpdate(
+      { user_token: token },
+      {
+        $push: { promo_codes: promocodes[levelCount] },
+      }
+    );
+
+    return res.status(301).json({
+      message: "Промокод получен",
+      is_promocode_get: true,
+      promocode: promocodes[levelCount],
+      token,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: "Не удалось завершить уровень",
+    });
+  }
+};
+
+export const completeOnbording = async (req, res) => {
+  try {
+    const user_token = req.user_token;
+
+    const user = User.findOneAndUpdate(
+      { user_token },
+      {
+        onbording_complete: true,
+      }
+    );
+
+    return res.status(200).json(user);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: "Не удалось завершить онбординг",
+    });
+  }
+};
+
+export const activatePromocode = async (req, res) => {
+  try {
+    const token = req.user_token;
+    const promocode = req.body.promocode;
+
+    const connectOptions = {
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      connectHeaders: {
+        host: "/",
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+        "heart-beat": "5000,5000",
+      },
+      ssl: true,
+      sslOptions: {
+        rejectUnauthorized: false,
+      },
+    };
+
+    const promoData = {
+      user_token: token,
+      promocode: promocode,
+    };
+
+    const user = await User.findOne({ user_token: token });
+
+    if (!user.promo_codes.includes(promocode)) {
+      return res.status(404).json({
+        message: "Не удалось найти промокод в полученных",
+      });
+    } else {
+      stompit.connect(connectOptions, (error, client) => {
+        if (error) {
+          console.error("Ошибка подключения:", error.message);
+          return;
+        }
+
+        console.log("Успешное подключение к ActiveMQ");
+
+        const sendHeaders = {
+          destination: "/queue/external.game.to.mobile",
+          _type: "gamePromoCode",
+          "content-type": "application/json",
+        };
+
+        const frame = client.send(sendHeaders);
+        frame.write(JSON.stringify(promoData));
+        frame.end();
+
+        console.log("Промокод отправлен:", promoData);
+
+        client.disconnect(() => {
+          console.log("Отключено от ActiveMQ");
+        });
+      });
+
+      await User.findOneAndUpdate(
+        { user_token: token },
+        {
+          $push: { activated_promo_codes: promocode },
+        }
+      );
+
+      return res
+        .status(200)
+        .json({ activate_promocode: true, promocode: promocode, token });
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: "Не удалось активировать промокод",
     });
   }
 };
