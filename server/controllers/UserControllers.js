@@ -219,6 +219,8 @@ export const activatePromocode = async (req, res) => {
     const promocode = req.body.promocode;
 
     console.log("Start...");
+    console.log("LOGIN:", process.env.LOGIN);
+    console.log("PASSCODE:", process.env.PASSCODE);
 
     const promoData = {
       user_token: token,
@@ -234,7 +236,7 @@ export const activatePromocode = async (req, res) => {
     }
 
     const tlsOptions = {
-      host: "mq-test.maxi-retail.ru",
+      host: "/",
       port: 61617,
       servername: "mq-test.maxi-retail.ru",
       rejectUnauthorized: true,
@@ -253,7 +255,7 @@ export const activatePromocode = async (req, res) => {
 
       const connectOptions = {
         connectHeaders: {
-          host: "mq-test.maxi-retail.ru",
+          host: "/",
           login: process.env.LOGIN,
           passcode: process.env.PASSCODE,
           "accept-version": "1.2",
