@@ -243,48 +243,55 @@ export const activatePromocode = async (req, res) => {
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
       });
-    } else {
-      stompit.connect(connectOptions, (error, client) => {
-        if (error) {
-          console.error("Ошибка подключения:", error.message);
-          return res.status(500).json({
-            message: `Ошибка подключения: ${error.message}`,
-          });
-        }
+    }
 
-        console.log("Успешное подключение к ActiveMQ");
-
-        const sendHeaders = {
-          destination: "/queue/external.game.to.mobile",
-          _type: "gamePromoCode",
-          "content-type": "application/json",
-        };
-
-        const frame = client.send(sendHeaders);
-        frame.write(JSON.stringify(promoData));
-        frame.end();
-
-        console.log("Промокод отправлен:", promoData);
-
-        client.disconnect(() => {
-          console.log("Отключено от ActiveMQ");
+    stompit.connect(connectOptions, async (error, client) => {
+      if (error) {
+        console.error("Ошибка подключения:", error.message);
+        return res.status(500).json({
+          message: `Ошибка подключения к ActiveMQ: ${error.message}`,
         });
+      }
 
-        User.findOneAndUpdate(
+      console.log("Успешное подключение к ActiveMQ");
+
+      const sendHeaders = {
+        destination: "/queue/external.game.to.mobile",
+        _type: "gamePromoCode",
+        "content-type": "application/json",
+      };
+
+      const frame = client.send(sendHeaders);
+      frame.write(JSON.stringify(promoData));
+      frame.end();
+
+      console.log("Промокод отправлен:", promoData);
+
+      client.disconnect(() => {
+        console.log("Отключено от ActiveMQ");
+      });
+
+      try {
+        await User.findOneAndUpdate(
           { user_token: token },
           { $push: { activated_promo_codes: promocode } }
-        ).catch((err) => console.error("Ошибка обновления БД:", err));
-      });
+        );
 
-      return res.status(200).json({
-        activate_promocode: true,
-        promocode: promocode,
-        token,
-      });
-    }
+        return res.status(200).json({
+          activate_promocode: true,
+          promocode: promocode,
+          token,
+        });
+      } catch (dbErr) {
+        console.error("Ошибка обновления базы:", dbErr);
+        return res.status(500).json({
+          message: "Ошибка при сохранении данных в базе",
+        });
+      }
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Не удалось активировать промокод",
     });
   }
