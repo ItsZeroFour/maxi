@@ -219,17 +219,17 @@ export const activatePromocode = async (req, res) => {
 
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
-      port: 61613,
+      port: 61617,
+      ssl: true,
       connectHeaders: {
         host: "/",
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: false,
-      // sslOptions: {
-      //   rejectUnauthorized: false,
-      // },
+      sslOptions: {
+        rejectUnauthorized: false,
+      },
     };
 
     const promoData = {
@@ -244,50 +244,46 @@ export const activatePromocode = async (req, res) => {
         message: "Не удалось найти промокод в полученных",
       });
     } else {
-      try {
-        stompit.connect(connectOptions, (error, client) => {
-          if (error) {
-            console.error("Ошибка подключения:", error.message);
-            return;
-          }
-
-          console.log("Успешное подключение к ActiveMQ");
-
-          const sendHeaders = {
-            destination: "/queue/external.game.to.mobile",
-            _type: "gamePromoCode",
-            "content-type": "application/json",
-          };
-
-          const frame = client.send(sendHeaders);
-          frame.write(JSON.stringify(promoData));
-          frame.end();
-
-          console.log("Промокод отправлен:", promoData);
-
-          client.disconnect(() => {
-            console.log("Отключено от ActiveMQ");
+      stompit.connect(connectOptions, (error, client) => {
+        if (error) {
+          console.error("Ошибка подключения:", error.message);
+          return res.status(500).json({
+            message: `Ошибка подключения: ${error.message}`,
           });
+        }
+
+        console.log("Успешное подключение к ActiveMQ");
+
+        const sendHeaders = {
+          destination: "/queue/external.game.to.mobile",
+          _type: "gamePromoCode",
+          "content-type": "application/json",
+        };
+
+        const frame = client.send(sendHeaders);
+        frame.write(JSON.stringify(promoData));
+        frame.end();
+
+        console.log("Промокод отправлен:", promoData);
+
+        client.disconnect(() => {
+          console.log("Отключено от ActiveMQ");
         });
 
-        await User.findOneAndUpdate(
+        User.findOneAndUpdate(
           { user_token: token },
-          {
-            $push: { activated_promo_codes: promocode },
-          }
-        );
+          { $push: { activated_promo_codes: promocode } }
+        ).catch((err) => console.error("Ошибка обновления БД:", err));
+      });
 
-        return res
-          .status(200)
-          .json({ activate_promocode: true, promocode: promocode, token });
-      } catch (err) {
-        return res.status(500).json({
-          message: "Не удалось активировать промокод",
-        });
-      }
+      return res.status(200).json({
+        activate_promocode: true,
+        promocode: promocode,
+        token,
+      });
     }
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).json({
       message: "Не удалось активировать промокод",
     });
