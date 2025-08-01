@@ -219,7 +219,7 @@ export const activatePromocode = async (req, res) => {
 
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
-      port: 61617,
+      port: 61613,
       connectHeaders: {
         host: "/",
         login: process.env.LOGIN,
@@ -230,8 +230,8 @@ export const activatePromocode = async (req, res) => {
       sslOptions: {
         // cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
         // key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
-        // rejectUnauthorized: true,
-        // secureProtocol: "TLSv1_2_method",
+        rejectUnauthorized: true,
+        secureProtocol: "TLSv1_2_method",
       },
     };
 
