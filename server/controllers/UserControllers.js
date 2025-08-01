@@ -236,7 +236,7 @@ export const activatePromocode = async (req, res) => {
     }
 
     const tlsOptions = {
-      host: "/",
+      host: "mq-test.maxi-retail.ru",
       port: 61617,
       servername: "mq-test.maxi-retail.ru",
       rejectUnauthorized: true,
