@@ -238,16 +238,15 @@ export const activatePromocode = async (req, res) => {
       });
     } else {
       const client = new StompClient(
-        HOST,
-        PORT,
-        USER,
-        PASS,
-        QUEUE,
-        "1.0",
-        null,
+        HOST,                    // ✅ CORRECT: just 'mq-test.maxi-retail.ru'
+        PORT,                    // ✅ 61617
+        USER,                    // ✅ your login
+        PASS,                    // ✅ your password
+        '1.0',                   // ✅ this is the actual STOMP version
+        null,                    // ✅ virtual host (null = default)
         {
-          ssl: true,
-          rejectUnauthorized: false,
+          ssl: true,             // ✅ enable SSL
+          rejectUnauthorized: false // ✅ skip TLS cert verification (testing only)
         }
       );
 
