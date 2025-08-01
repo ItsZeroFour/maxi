@@ -226,12 +226,15 @@ export const activatePromocode = async (req, res) => {
           port: options.port,
           rejectUnauthorized: false,
         };
-        const socket = tls.connect(tlsOptions, () => {
+
+        const socket = tls.connect(tlsOptions);
+
+        socket.once("secureConnect", () => {
           callback(null, socket);
         });
 
-        socket.on("error", (err) => {
-          callback(err, null);
+        socket.once("error", (err) => {
+          callback(err);
         });
       },
       connectHeaders: {
