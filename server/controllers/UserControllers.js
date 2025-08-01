@@ -216,8 +216,6 @@ export const completeOnbording = async (req, res) => {
 
 export const activatePromocode = async (req, res) => {
   let client;
-  let socket;
-
   try {
     const token = req.user_token;
     const promocode = req.body.promocode;
@@ -227,34 +225,26 @@ export const activatePromocode = async (req, res) => {
       return res.status(404).json({ message: "Промокод не найден" });
     }
 
-    // 1. Создаем кастомный транспортный слой
-    class CustomTransport {
-      constructor(socket) {
-        this.socket = socket;
-        this.onmessage = null;
-        this.onopen = null;
-        this.onclose = null;
-        this.onerror = null;
-      }
+    const createTcpTransport = () => {
+      const tls = require("tls");
+      const socket = tls.connect({
+        host: "mq-test.maxi-retail.ru",
+        port: 61617,
+        rejectUnauthorized: false,
+      });
 
-      send(data) {
-        this.socket.write(data);
-      }
+      return {
+        send: (data) => socket.write(data),
+        close: () => socket.end(),
+        onmessage: null,
+        onopen: null,
+        onclose: null,
+        onerror: null,
+        socket: socket,
+      };
+    };
 
-      close() {
-        this.socket.end();
-      }
-    }
-
-    // 2. Устанавливаем SSL соединение
-    socket = tls.connect({
-      host: "mq-test.maxi-retail.ru",
-      port: 61617,
-      rejectUnauthorized: false,
-      servername: "mq-test.maxi-retail.ru",
-    });
-
-    // 3. Настраиваем STOMP клиент
+    // 2. Настраиваем клиент с кастомным транспортом
     client = new Client({
       brokerURL: "ssl://mq-test.maxi-retail.ru:61617",
       connectHeaders: {
@@ -265,38 +255,12 @@ export const activatePromocode = async (req, res) => {
       },
       debug: (str) => console.log(`STOMP: ${str}`),
       reconnectDelay: 0,
+      transportProvider: {
+        createTransport: createTcpTransport,
+      },
     });
 
-    // 4. Создаем кастомный транспорт
-    const transport = new CustomTransport(socket);
-    client.webSocket = transport;
-
-    // 5. Обработчики событий сокета
-    socket.on("data", (data) => {
-      if (transport.onmessage) {
-        transport.onmessage({ data: data.toString() });
-      }
-    });
-
-    socket.on("secureConnect", () => {
-      if (transport.onopen) {
-        transport.onopen();
-      }
-    });
-
-    socket.on("error", (err) => {
-      if (transport.onerror) {
-        transport.onerror(err);
-      }
-    });
-
-    socket.on("close", () => {
-      if (transport.onclose) {
-        transport.onclose();
-      }
-    });
-
-    // 6. Ожидаем подключения
+    // 3. Обработчики событий
     const connectionPromise = new Promise((resolve, reject) => {
       client.onConnect = () => {
         console.log("Успешное подключение к ActiveMQ");
@@ -316,10 +280,36 @@ export const activatePromocode = async (req, res) => {
       };
     });
 
+    // 4. Подключаем обработчики сокета
+    client.transport.socket.on("data", (data) => {
+      if (client.transport.onmessage) {
+        client.transport.onmessage({ data: data.toString() });
+      }
+    });
+
+    client.transport.socket.on("secureConnect", () => {
+      if (client.transport.onopen) {
+        client.transport.onopen();
+      }
+    });
+
+    client.transport.socket.on("error", (err) => {
+      if (client.transport.onerror) {
+        client.transport.onerror(err);
+      }
+    });
+
+    client.transport.socket.on("close", () => {
+      if (client.transport.onclose) {
+        client.transport.onclose();
+      }
+    });
+
+    // 5. Активируем подключение
     client.activate();
     await connectionPromise;
 
-    // 7. Отправляем сообщение
+    // 6. Отправляем сообщение
     await new Promise((resolve) => {
       client.publish({
         destination: "/queue/external.game.to.mobile",
@@ -337,44 +327,36 @@ export const activatePromocode = async (req, res) => {
 
     console.log("Промокод успешно отправлен");
 
-    // 8. Обновляем пользователя
+    // 7. Обновляем пользователя
     await User.updateOne(
       { user_token: token },
       { $push: { activated_promo_codes: promocode } }
     );
 
-    // 9. Закрываем соединение
-    await new Promise((resolve) => {
-      client.deactivate();
-      socket.end(resolve);
-    });
+    // 8. Закрываем соединение
+    await client.deactivate();
 
     return res.status(200).json({
       success: true,
       promocode: promocode,
     });
   } catch (error) {
-    console.error("Полная ошибка:", {
+    console.error("Ошибка:", {
       message: error.message,
       stack: error.stack,
-      code: error.code,
     });
 
     if (client) {
       try {
         await client.deactivate();
-      } catch (deactivateError) {
-        console.error("Ошибка при деактивации клиента:", deactivateError);
+      } catch (e) {
+        console.error("Ошибка при закрытии соединения:", e);
       }
-    }
-
-    if (socket) {
-      socket.destroy();
     }
 
     if (!res.headersSent) {
       return res.status(500).json({
-        message: "Ошибка активации промокода",
+        message: "Не удалось активировать промокод",
         error:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       });
