@@ -212,52 +212,40 @@ export const completeOnbording = async (req, res) => {
   }
 };
 
+function connectClientOverTls() {
+  return new Promise((resolve, reject) => {
+    const tlsOptions = {
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      rejectUnauthorized: false,
+    };
+
+    const socket = tls.connect(tlsOptions);
+
+    socket.once("secureConnect", () => {
+      const connectOptions = {
+        connectHeaders: {
+          host: "/",
+          login: process.env.LOGIN,
+          passcode: process.env.PASSCODE,
+          "heart-beat": "5000,5000",
+        },
+      };
+
+      const client = new stompit.Client(socket, connectOptions);
+      resolve(client);
+    });
+
+    socket.once("error", (err) => {
+      reject(err);
+    });
+  });
+}
+
 export const activatePromocode = async (req, res) => {
   try {
     const token = req.user_token;
     const promocode = req.body.promocode;
-
-    const connectOptions = {
-      host: "mq-test.maxi-retail.ru",
-      port: 61617,
-      connect: (options, callback) => {
-        const tlsOptions = {
-          host: options.host,
-          port: options.port,
-          rejectUnauthorized: false,
-        };
-
-        const socket = tls.connect(tlsOptions);
-
-        let called = false;
-
-        const safeCallback = (err, sock) => {
-          if (!called) {
-            called = true;
-            callback(err, sock);
-          }
-        };
-
-        socket.once("secureConnect", () => {
-          safeCallback(null, socket);
-        });
-
-        socket.once("error", (err) => {
-          setImmediate(() => safeCallback(err));
-        });
-      },
-      connectHeaders: {
-        host: "/",
-        login: process.env.LOGIN,
-        passcode: process.env.PASSCODE,
-        "heart-beat": "5000,5000",
-      },
-    };
-
-    const promoData = {
-      user_token: token,
-      promocode: promocode,
-    };
 
     const user = await User.findOne({ user_token: token });
 
@@ -267,13 +255,13 @@ export const activatePromocode = async (req, res) => {
       });
     }
 
-    stompit.connect(connectOptions, async (error, client) => {
-      if (error) {
-        console.error("Ошибка подключения:", error.message);
-        return;
-      }
+    const promoData = {
+      user_token: token,
+      promocode: promocode,
+    };
 
-      console.log("Успешное SSL-подключение к ActiveMQ");
+    try {
+      const client = await connectClientOverTls();
 
       const sendHeaders = {
         destination: "/queue/external.game.to.mobile",
@@ -287,28 +275,24 @@ export const activatePromocode = async (req, res) => {
 
       console.log("Промокод отправлен:", promoData);
 
-      client.disconnect(() => {
-        console.log("Отключено от ActiveMQ");
+      client.disconnect();
+
+      await User.findOneAndUpdate(
+        { user_token: token },
+        { $push: { activated_promo_codes: promocode } }
+      );
+
+      return res.status(200).json({
+        activate_promocode: true,
+        promocode: promocode,
+        token,
       });
-
-      try {
-        await User.findOneAndUpdate(
-          { user_token: token },
-          { $push: { activated_promo_codes: promocode } }
-        );
-
-        return res.status(200).json({
-          activate_promocode: true,
-          promocode: promocode,
-          token,
-        });
-      } catch (dbErr) {
-        console.error("Ошибка обновления базы:", dbErr);
-        return res.status(500).json({
-          message: "Ошибка при сохранении данных в базе",
-        });
-      }
-    });
+    } catch (error) {
+      console.error("Ошибка подключения к ActiveMQ:", error.message);
+      return res.status(500).json({
+        message: `Ошибка подключения к ActiveMQ: ${error.message}`,
+      });
+    }
   } catch (err) {
     console.error(err);
     return res.status(500).json({
