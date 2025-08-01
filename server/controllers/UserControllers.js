@@ -1,10 +1,9 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import { Client } from "@stomp/stompjs";
-import net from "net";
+import { StompClient } from "stomp-client";
+import fs from "fs";
 import tls from "tls";
-import { Buffer } from "buffer";
 
 dotenv.config();
 
@@ -215,151 +214,67 @@ export const completeOnbording = async (req, res) => {
 };
 
 export const activatePromocode = async (req, res) => {
-  let client;
   try {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
-    const user = await User.findOne({ user_token: token });
-    if (!user?.promo_codes.includes(promocode)) {
-      return res.status(404).json({ message: "Промокод не найден" });
-    }
+    const HOST = "mq-test.maxi-retail.ru";
+    const PORT = 61617;
+    const USER = process.env.LOGIN;
+    const PASS = process.env.PASSCODE;
+    const QUEUE = "/queue/external.game.to.mobile";
+    const HEADER_TYPE = { _type: "gamePromoCode" };
 
-    const createTcpTransport = () => {
-      const tls = require("tls");
-      const socket = tls.connect({
-        host: "mq-test.maxi-retail.ru",
-        port: 61617,
-        rejectUnauthorized: false,
-      });
-
-      return {
-        send: (data) => socket.write(data),
-        close: () => socket.end(),
-        onmessage: null,
-        onopen: null,
-        onclose: null,
-        onerror: null,
-        socket: socket,
-      };
+    const MESSAGE = {
+      user_token: token,
+      promocode: promocode,
     };
 
-    // 2. Настраиваем клиент с кастомным транспортом
-    client = new Client({
-      brokerURL: "ssl://mq-test.maxi-retail.ru:61617",
-      connectHeaders: {
-        login: process.env.LOGIN,
-        passcode: process.env.PASSCODE,
-        host: "/",
-        "heart-beat": "5000,5000",
-      },
-      debug: (str) => console.log(`STOMP: ${str}`),
-      reconnectDelay: 0,
-      transportProvider: {
-        createTransport: createTcpTransport,
-      },
-    });
+    const sslOptions = {
+      host: HOST,
+      port: PORT,
+      rejectUnauthorized: false,
+    };
 
-    // 3. Обработчики событий
-    const connectionPromise = new Promise((resolve, reject) => {
-      client.onConnect = () => {
-        console.log("Успешное подключение к ActiveMQ");
-        resolve();
-      };
+    const user = await User.findOne({ user_token: token });
 
-      client.onStompError = (frame) => {
-        reject(
-          new Error(
-            `STOMP ошибка: ${frame.headers?.message || "Неизвестная ошибка"}`
-          )
-        );
-      };
-
-      client.onWebSocketError = (err) => {
-        reject(err);
-      };
-    });
-
-    // 4. Подключаем обработчики сокета
-    client.transport.socket.on("data", (data) => {
-      if (client.transport.onmessage) {
-        client.transport.onmessage({ data: data.toString() });
-      }
-    });
-
-    client.transport.socket.on("secureConnect", () => {
-      if (client.transport.onopen) {
-        client.transport.onopen();
-      }
-    });
-
-    client.transport.socket.on("error", (err) => {
-      if (client.transport.onerror) {
-        client.transport.onerror(err);
-      }
-    });
-
-    client.transport.socket.on("close", () => {
-      if (client.transport.onclose) {
-        client.transport.onclose();
-      }
-    });
-
-    // 5. Активируем подключение
-    client.activate();
-    await connectionPromise;
-
-    // 6. Отправляем сообщение
-    await new Promise((resolve) => {
-      client.publish({
-        destination: "/queue/external.game.to.mobile",
-        body: JSON.stringify({
-          user_token: token,
-          promocode: promocode,
-        }),
-        headers: {
-          _type: "gamePromoCode",
-          "content-type": "application/json",
-        },
+    if (!user.promo_codes.includes(promocode)) {
+      return res.status(404).json({
+        message: "Не удалось найти промокод в полученных",
       });
-      setTimeout(resolve, 300);
-    });
+    } else {
+      const client = new StompClient(
+        `ssl://${HOST}`,
+        PORT,
+        USER,
+        PASS,
+        QUEUE,
+        "1.0",
+        null,
+        sslOptions
+      );
 
-    console.log("Промокод успешно отправлен");
+      client.connect(() => {
+        console.log('Connected to ActiveMQ.');
+      
+        client.publish(QUEUE, JSON.stringify(MESSAGE), HEADER_TYPE);
+        console.log('Message sent:', MESSAGE);
+      
+        client.disconnect(() => {
+          console.log('Disconnected.');
+        });
+      });
 
-    // 7. Обновляем пользователя
-    await User.updateOne(
-      { user_token: token },
-      { $push: { activated_promo_codes: promocode } }
-    );
-
-    // 8. Закрываем соединение
-    await client.deactivate();
-
-    return res.status(200).json({
-      success: true,
-      promocode: promocode,
-    });
-  } catch (error) {
-    console.error("Ошибка:", {
-      message: error.message,
-      stack: error.stack,
-    });
-
-    if (client) {
-      try {
-        await client.deactivate();
-      } catch (e) {
-        console.error("Ошибка при закрытии соединения:", e);
-      }
-    }
-
-    if (!res.headersSent) {
-      return res.status(500).json({
-        message: "Не удалось активировать промокод",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+      return res.status(200).json({
+        activate_promocode: true,
+        promocode: promocode,
+        token,
       });
     }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: "Не удалось активировать промокод",
+    });
   }
 };
