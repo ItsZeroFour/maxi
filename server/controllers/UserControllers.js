@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
 import fs from "fs";
+import tls from "tls";
 import stompit from "stompit";
 
 dotenv.config();
@@ -219,23 +220,6 @@ export const activatePromocode = async (req, res) => {
 
     console.log("Start...");
 
-    const connectOptions = {
-      host: "mq-test.maxi-retail.ru",
-      port: 61617,
-      connectHeaders: {
-        host: "mq-test.maxi-retail.ru",
-        login: process.env.LOGIN,
-        passcode: process.env.PASSCODE,
-        "accept-version": "1.2",
-        // "heart-beat": "5000,5000",
-      },
-      ssl: true,
-      sslOptions: {
-        rejectUnauthorized: true,
-        secureProtocol: "TLSv1_2_method",
-      },
-    };
-
     const promoData = {
       user_token: token,
       promocode: promocode,
@@ -243,15 +227,44 @@ export const activatePromocode = async (req, res) => {
 
     const user = await User.findOne({ user_token: token });
 
-    if (!user.promo_codes.includes(promocode)) {
+    if (!user || !user.promo_codes.includes(promocode)) {
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
       });
-    } else {
+    }
+
+    const tlsOptions = {
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      servername: "mq-test.maxi-retail.ru",
+      rejectUnauthorized: true,
+    };
+
+    const socket = tls.connect(tlsOptions, () => {
+      if (!socket.authorized) {
+        console.error(
+          "TLS connection not authorized:",
+          socket.authorizationError
+        );
+        return res.status(500).json({
+          message: "TLS соединение не авторизовано",
+        });
+      }
+
+      const connectOptions = {
+        connectHeaders: {
+          host: "mq-test.maxi-retail.ru",
+          login: process.env.LOGIN,
+          passcode: process.env.PASSCODE,
+          "accept-version": "1.2",
+        },
+        socket: socket,
+      };
+
       stompit.connect(connectOptions, (error, client) => {
         if (error) {
-          console.error("Ошибка подключения:", error.message);
-          return;
+          console.error("Ошибка подключения к STOMP:", error.message);
+          return res.status(500).json({ message: "Ошибка STOMP-соединения" });
         }
 
         console.log("Успешное подключение к ActiveMQ");
@@ -271,21 +284,33 @@ export const activatePromocode = async (req, res) => {
         client.disconnect(() => {
           console.log("Отключено от ActiveMQ");
         });
+
+        User.findOneAndUpdate(
+          { user_token: token },
+          { $push: { activated_promo_codes: promocode } }
+        )
+          .then(() => {
+            return res.status(200).json({
+              activate_promocode: true,
+              promocode,
+              token,
+            });
+          })
+          .catch((err) => {
+            console.error("Ошибка обновления пользователя:", err.message);
+            return res
+              .status(500)
+              .json({ message: "Ошибка обновления пользователя" });
+          });
       });
+    });
 
-      await User.findOneAndUpdate(
-        { user_token: token },
-        {
-          $push: { activated_promo_codes: promocode },
-        }
-      );
-
-      return res
-        .status(200)
-        .json({ activate_promocode: true, promocode: promocode, token });
-    }
+    socket.on("error", (err) => {
+      console.error("Ошибка TLS-соединения:", err.message);
+      return res.status(500).json({ message: "Ошибка TLS-соединения" });
+    });
   } catch (err) {
-    console.log(err);
+    console.log("Ошибка общего уровня:", err.message);
     res.status(500).json({
       message: "Не удалось активировать промокод",
     });
