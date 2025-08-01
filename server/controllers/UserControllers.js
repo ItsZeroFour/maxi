@@ -1,7 +1,7 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import tls from "tls";
+import fs from "fs";
 import stompit from "stompit";
 
 dotenv.config();
@@ -217,95 +217,79 @@ export const activatePromocode = async (req, res) => {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
-    const user = await User.findOne({ user_token: token });
-
-    if (!user || !user.promo_codes.includes(promocode)) {
-      return res.status(404).json({
-        message: "Не удалось найти промокод в полученных",
-      });
-    }
+    const connectOptions = {
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      ssl: true,
+      connectHeaders: {
+        host: "/",
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+        "heart-beat": "5000,5000",
+      },
+      sslOptions: {
+        rejectUnauthorized: false,
+        secureProtocol: "TLSv1_2_method",
+        ciphers:
+          "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA",
+        debug: true,
+        secureOptions:
+          require("constants").SSL_OP_NO_SSLv3 |
+          require("constants").SSL_OP_NO_SSLv2,
+      },
+    };
 
     const promoData = {
       user_token: token,
       promocode: promocode,
     };
 
-    const tlsOptions = {
-      host: "mq-test.maxi-retail.ru",
-      port: 61617,
-      rejectUnauthorized: false,
-    };
+    const user = await User.findOne({ user_token: token });
 
-    const socket = tls.connect(tlsOptions);
+    if (!user.promo_codes.includes(promocode)) {
+      return res.status(404).json({
+        message: "Не удалось найти промокод в полученных",
+      });
+    } else {
+      stompit.connect(connectOptions, (error, client) => {
+        if (error) {
+          console.error("Полная ошибка подключения:", error);
+          console.error("Stack trace:", error.stack);
+          return res.status(500).json({
+            message: `Ошибка подключения: ${error.message}`,
+          });
+        }
 
-    let responseSent = false;
+        console.log("Успешное подключение к ActiveMQ");
 
-    const sendResponse = (code, data) => {
-      if (!responseSent) {
-        responseSent = true;
-        res.status(code).json(data);
-      }
-    };
+        const sendHeaders = {
+          destination: "/queue/external.game.to.mobile",
+          _type: "gamePromoCode",
+          "content-type": "application/json",
+        };
 
-    socket.once("secureConnect", async () => {
-      const connectHeaders = {
-        host: "mq-test.maxi-retail.ru",
-        login: process.env.LOGIN,
-        passcode: process.env.PASSCODE,
-        "heart-beat": "5000,5000",
-        "accept-version": "1.1",
-      };
+        const frame = client.send(sendHeaders);
+        frame.write(JSON.stringify(promoData));
+        frame.end();
 
-      const client = new stompit.Client(socket, { connectHeaders });
+        console.log("Промокод отправлен:", promoData);
 
-      client.on("error", (err) => {
-        console.error("STOMP клиент упал:", err.message);
-        sendResponse(500, {
-          message: `Ошибка STOMP клиента: ${err.message}`,
+        client.disconnect(() => {
+          console.log("Отключено от ActiveMQ");
         });
-      });
 
-      const sendHeaders = {
-        destination: "/queue/external.game.to.mobile",
-        _type: "gamePromoCode",
-        "content-type": "application/json",
-      };
-
-      const frame = client.send(sendHeaders);
-      frame.write(JSON.stringify(promoData));
-      frame.end();
-
-      console.log("Промокод отправлен:", promoData);
-
-      client.disconnect(() => {
-        console.log("Отключено от ActiveMQ");
-      });
-
-      try {
-        await User.findOneAndUpdate(
+        User.findOneAndUpdate(
           { user_token: token },
           { $push: { activated_promo_codes: promocode } }
-        );
-
-        sendResponse(200, {
-          activate_promocode: true,
-          promocode: promocode,
-          token,
-        });
-      } catch (dbErr) {
-        console.error("Ошибка обновления базы:", dbErr);
-        sendResponse(500, {
-          message: "Ошибка при сохранении данных в базе",
-        });
-      }
-    });
-
-    socket.once("error", (err) => {
-      console.error("Ошибка TLS подключения:", err.message);
-      sendResponse(500, {
-        message: `Ошибка подключения к ActiveMQ: ${err.message}`,
+        ).catch((err) => console.error("Ошибка обновления БД:", err));
       });
-    });
+
+      return res.status(200).json({
+        activate_promocode: true,
+        promocode: promocode,
+        token,
+      });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({
