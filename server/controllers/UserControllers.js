@@ -229,12 +229,21 @@ export const activatePromocode = async (req, res) => {
 
         const socket = tls.connect(tlsOptions);
 
+        let called = false;
+
+        const safeCallback = (err, sock) => {
+          if (!called) {
+            called = true;
+            callback(err, sock);
+          }
+        };
+
         socket.once("secureConnect", () => {
-          callback(null, socket);
+          safeCallback(null, socket);
         });
 
         socket.once("error", (err) => {
-          callback(err);
+          setImmediate(() => safeCallback(err));
         });
       },
       connectHeaders: {
