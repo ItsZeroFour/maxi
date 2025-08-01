@@ -225,7 +225,19 @@ export const activatePromocode = async (req, res) => {
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: true,
+      ssl: {
+        ca: [fs.readFileSync("/etc/ssl/certs/ca-certificates.crt")],
+        cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
+        key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
+
+        rejectUnauthorized: true,
+        requestCert: true,
+      },
+      connectTimeout: 10000,
+      reconnectOptions: {
+        maxReconnects: 3,
+        retryDelay: 5000,
+      },
     };
 
     const promoData = {
@@ -246,7 +258,7 @@ export const activatePromocode = async (req, res) => {
 
     const sendPromoData = () => {
       return new Promise((resolve, reject) => {
-        stompit.connect(connectOptions, (error, client) => {
+        const client = stompit.connect(connectOptions, (error, client) => {
           if (error) {
             console.error(
               `[activatePromocode] Ошибка подключения к ActiveMQ:`,
@@ -254,6 +266,15 @@ export const activatePromocode = async (req, res) => {
             );
             return reject(error);
           }
+
+          // Обработчик ошибок соединения
+          client.on("error", (err) => {
+            console.error(
+              `[activatePromocode] Ошибка соединения ActiveMQ:`,
+              err.stack || err
+            );
+            reject(err);
+          });
 
           console.log("[activatePromocode] Успешное подключение к ActiveMQ");
 
