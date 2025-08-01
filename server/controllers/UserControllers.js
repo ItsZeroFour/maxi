@@ -265,7 +265,7 @@ export const activatePromocode = async (req, res) => {
 
       stompit.connect(connectOptions, (error, client) => {
         if (error) {
-          console.error("Ошибка подключения к STOMP:", error.message);
+          console.error("Ошибка подключения к STOMP:", error);
           return res.status(500).json({ message: "Ошибка STOMP-соединения" });
         }
 
