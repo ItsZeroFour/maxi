@@ -1,7 +1,8 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import tls from "tls";
+import { Client } from "@stomp/stompjs";
+import * as tls from "tls";
 
 dotenv.config();
 
@@ -216,7 +217,7 @@ export const activatePromocode = async (req, res) => {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
-    // Find user and check promocode presence
+    // Verify user and promo code first
     const user = await User.findOne({ user_token: token });
 
     if (!user || !user.promo_codes.includes(promocode)) {
@@ -225,96 +226,66 @@ export const activatePromocode = async (req, res) => {
       });
     }
 
-    // STOMP configuration
-    const HOST = "mq-test.maxi-retail.ru";
-    const PORT = 61617;
-    const USERNAME = process.env.LOGIN;
-    const PASSWORD = process.env.PASSCODE;
-    const QUEUE = "/queue/external.game.to.mobile";
+    // STOMP Client with custom TLS socket connection
+    const client = new Client({
+      // Custom webSocketFactory using TLS socket for ssl:// connection
+      webSocketFactory: () =>
+        tls.connect({
+          host: "mq-test.maxi-retail.ru",
+          port: 61617,
+          rejectUnauthorized: false, // Change for production!
+        }),
+      connectHeaders: {
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+      },
+      debug: (str) => {
+        console.log("[STOMP]", str);
+      },
+      reconnectDelay: 5000,
+    });
 
-    // Helper: create STOMP frame string
-    function createStompFrame(command, headers = {}, body = "") {
-      let frame = command + "\n";
-      for (const [key, value] of Object.entries(headers)) {
-        frame += `${key}:${value}\n`;
-      }
-      frame += "\n";
-      frame += body;
-      frame += "\0";
-      return frame;
-    }
-
-    // Promise-based function to connect and send message via STOMP over TLS
-    function sendStompMessage(user_token, promocode) {
-      return new Promise((resolve, reject) => {
-        const socket = tls.connect(
-          PORT,
-          HOST,
-          { rejectUnauthorized: false },
-          () => {
-            // Send CONNECT frame
-            const connectFrame = createStompFrame("CONNECT", {
-              login: USERNAME,
-              passcode: PASSWORD,
-              "accept-version": "1.2",
-              host: HOST,
-            });
-            socket.write(connectFrame);
-          }
-        );
-
-        let buffer = "";
-
-        socket.on("data", (data) => {
-          buffer += data.toString();
-
-          // Process complete frames separated by NULL character
-          while (buffer.includes("\0")) {
-            const index = buffer.indexOf("\0");
-            const frame = buffer.slice(0, index);
-            buffer = buffer.slice(index + 1);
-
-            if (frame.startsWith("CONNECTED")) {
-              // Connected, send SEND frame with message
-              const body = JSON.stringify({ user_token, promocode });
-              const headers = {
-                destination: QUEUE,
-                "content-type": "application/json",
-                _type: "gamePromoCode",
-                persistent: "true",
-              };
-              const sendFrame = createStompFrame("SEND", headers, body);
-              socket.write(sendFrame);
-
-              // Disconnect politely after sending
-              const disconnectFrame = createStompFrame("DISCONNECT");
-              socket.write(disconnectFrame);
-              socket.end();
-              resolve();
-            } else if (frame.startsWith("ERROR")) {
-              reject(new Error("STOMP ERROR: " + frame));
-              socket.end();
-            }
-          }
+    // Promise wrapper so we wait for sending before returning response
+    await new Promise((resolve, reject) => {
+      client.onConnect = () => {
+        const destination = "/queue/external.game.to.mobile";
+        const body = JSON.stringify({
+          user_token: token,
+          promocode: promocode,
         });
 
-        socket.on("error", (err) => {
-          reject(err);
+        client.publish({
+          destination,
+          body,
+          headers: { _type: "gamePromoCode" },
         });
-      });
-    }
 
-    // Send the message
-    await sendStompMessage(token, promocode);
+        client.deactivate();
+        resolve();
+      };
 
-    // Respond success
+      client.onStompError = (frame) => {
+        console.error("Broker error:", frame.headers["message"]);
+        client.deactivate();
+        reject(new Error(frame.headers["message"]));
+      };
+
+      client.onWebSocketError = (error) => {
+        console.error("WebSocket error:", error);
+        client.deactivate();
+        reject(error);
+      };
+
+      client.activate();
+    });
+
     return res.status(200).json({
       activate_promocode: true,
-      promocode: promocode,
+      promocode,
       token,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Activation error:", err);
     res.status(500).json({
       message: "Не удалось активировать промокод",
     });
