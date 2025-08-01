@@ -236,6 +236,9 @@ export const activatePromocode = async (req, res) => {
     const user = await User.findOne({ user_token: token });
 
     if (!user || !user.promo_codes.includes(promocode)) {
+      console.error(
+        `[activatePromocode] Промокод не найден у пользователя: user_token=${token}, promocode=${promocode}`
+      );
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
       });
@@ -245,11 +248,14 @@ export const activatePromocode = async (req, res) => {
       return new Promise((resolve, reject) => {
         stompit.connect(connectOptions, (error, client) => {
           if (error) {
-            console.error("Ошибка подключения:", error.message);
+            console.error(
+              `[activatePromocode] Ошибка подключения к ActiveMQ:`,
+              error.stack || error
+            );
             return reject(error);
           }
 
-          console.log("Успешное подключение к ActiveMQ");
+          console.log("[activatePromocode] Успешное подключение к ActiveMQ");
 
           const sendHeaders = {
             destination: "/queue/external.game.to.mobile",
@@ -260,16 +266,19 @@ export const activatePromocode = async (req, res) => {
           const frame = client.send(sendHeaders);
 
           frame.on("error", (frameError) => {
-            console.error("Ошибка отправки frame:", frameError.message);
+            console.error(
+              `[activatePromocode] Ошибка отправки frame:`,
+              frameError.stack || frameError
+            );
             client.disconnect(() => {});
             reject(frameError);
           });
 
           frame.write(JSON.stringify(promoData));
           frame.end(() => {
-            console.log("Промокод отправлен:", promoData);
+            console.log("[activatePromocode] Промокод отправлен:", promoData);
             client.disconnect(() => {
-              console.log("Отключено от ActiveMQ");
+              console.log("[activatePromocode] Отключено от ActiveMQ");
               resolve();
             });
           });
@@ -292,15 +301,15 @@ export const activatePromocode = async (req, res) => {
       });
     } catch (err) {
       console.error(
-        "Ошибка при отправке в stomp или обновлении базы:",
-        err.message
+        `[activatePromocode] Ошибка при отправке в stomp или обновлении базы:`,
+        err.stack || err
       );
       return res.status(500).json({
         message: "Не удалось активировать промокод",
       });
     }
   } catch (err) {
-    console.log(err);
+    console.error(`[activatePromocode] Внутренняя ошибка:`, err.stack || err);
     res.status(500).json({
       message: "Не удалось активировать промокод",
     });
