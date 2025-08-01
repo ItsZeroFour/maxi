@@ -228,10 +228,10 @@ export const activatePromocode = async (req, res) => {
       },
       ssl: false,
       sslOptions: {
-        cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
-        key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
-        rejectUnauthorized: true,
-        secureProtocol: "TLSv1_2_method",
+        // cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
+        // key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
+        // rejectUnauthorized: true,
+        // secureProtocol: "TLSv1_2_method",
       },
     };
 
