@@ -230,12 +230,6 @@ export const activatePromocode = async (req, res) => {
       promocode: promocode,
     };
 
-    const sslOptions = {
-      host: HOST,
-      port: PORT,
-      rejectUnauthorized: false,
-    };
-
     const user = await User.findOne({ user_token: token });
 
     if (!user.promo_codes.includes(promocode)) {
@@ -244,24 +238,27 @@ export const activatePromocode = async (req, res) => {
       });
     } else {
       const client = new StompClient(
-        `ssl://${HOST}`,
+        HOST,
         PORT,
         USER,
         PASS,
         QUEUE,
         "1.0",
         null,
-        sslOptions
+        {
+          ssl: true,
+          rejectUnauthorized: false,
+        }
       );
 
       client.connect(() => {
-        console.log('Connected to ActiveMQ.');
-      
+        console.log("Connected to ActiveMQ.");
+
         client.publish(QUEUE, JSON.stringify(MESSAGE), HEADER_TYPE);
-        console.log('Message sent:', MESSAGE);
-      
+        console.log("Message sent:", MESSAGE);
+
         client.disconnect(() => {
-          console.log('Disconnected.');
+          console.log("Disconnected.");
         });
       });
 
