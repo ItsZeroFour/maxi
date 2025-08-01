@@ -220,17 +220,13 @@ export const activatePromocode = async (req, res) => {
 
     console.log("Start...");
 
-    const promoData = {
-      user_token: token,
-      promocode,
-    };
+    const promoData = { user_token: token, promocode };
 
     const user = await User.findOne({ user_token: token });
-
     if (!user || !user.promo_codes.includes(promocode)) {
-      return res.status(404).json({
-        message: "Не удалось найти промокод в полученных",
-      });
+      return res
+        .status(404)
+        .json({ message: "Не удалось найти промокод в полученных" });
     }
 
     const tlsOptions = {
@@ -240,12 +236,9 @@ export const activatePromocode = async (req, res) => {
       rejectUnauthorized: true,
     };
 
-    const socket = tls.connect(tlsOptions, async () => {
+    const socket = tls.connect(tlsOptions, () => {
       if (!socket.authorized) {
-        console.error(
-          "TLS connection not authorized:",
-          socket.authorizationError
-        );
+        console.error("TLS не авторизовано:", socket.authorizationError);
         return res
           .status(500)
           .json({ message: "TLS соединение не авторизовано" });
@@ -260,12 +253,16 @@ export const activatePromocode = async (req, res) => {
           passcode: process.env.PASSCODE,
           "accept-version": "1.2",
         },
-        socket,
+        transport: socket,
       };
 
-      let client;
-      try {
-        client = new stompit.Client(connectOptions);
+      stompit.connect(connectOptions, async (error, client) => {
+        if (error) {
+          console.error("Ошибка подключения к STOMP:", error);
+          return res.status(500).json({ message: "Ошибка STOMP-соединения" });
+        }
+
+        console.log("Успешное подключение к ActiveMQ");
 
         const sendHeaders = {
           destination: "/queue/external.game.to.mobile",
@@ -277,26 +274,30 @@ export const activatePromocode = async (req, res) => {
         frame.write(JSON.stringify(promoData));
         frame.end();
 
-        console.log("Промокод отправлен в очередь:", promoData);
+        console.log("Промокод отправлен:", promoData);
 
         client.disconnect(() => {
-          console.log("Отключено от STOMP брокера");
+          console.log("Отключено от STOMP");
         });
 
-        await User.findOneAndUpdate(
-          { user_token: token },
-          { $push: { activated_promo_codes: promocode } }
-        );
+        try {
+          await User.findOneAndUpdate(
+            { user_token: token },
+            { $push: { activated_promo_codes: promocode } }
+          );
 
-        return res.status(200).json({
-          activate_promocode: true,
-          promocode,
-          token,
-        });
-      } catch (error) {
-        console.error("Ошибка STOMP-соединения:", error);
-        return res.status(500).json({ message: "Ошибка STOMP-соединения" });
-      }
+          return res.status(200).json({
+            activate_promocode: true,
+            promocode,
+            token,
+          });
+        } catch (err) {
+          console.error("Ошибка обновления пользователя:", err.message);
+          return res
+            .status(500)
+            .json({ message: "Ошибка обновления пользователя" });
+        }
+      });
     });
 
     socket.on("error", (err) => {
