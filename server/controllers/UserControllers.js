@@ -1,8 +1,8 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import fs from "fs";
 import stompit from "stompit";
+import tls from "tls";
 
 dotenv.config();
 
@@ -220,15 +220,25 @@ export const activatePromocode = async (req, res) => {
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
       port: 61617,
-      ssl: true,
+      connect: (options, callback) => {
+        const tlsOptions = {
+          host: options.host,
+          port: options.port,
+          rejectUnauthorized: false,
+        };
+        const socket = tls.connect(tlsOptions, () => {
+          callback(null, socket);
+        });
+
+        socket.on("error", (err) => {
+          callback(err, null);
+        });
+      },
       connectHeaders: {
         host: "/",
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
-      },
-      sslOptions: {
-        rejectUnauthorized: false,
       },
     };
 
@@ -248,12 +258,10 @@ export const activatePromocode = async (req, res) => {
     stompit.connect(connectOptions, async (error, client) => {
       if (error) {
         console.error("Ошибка подключения:", error.message);
-        return res.status(500).json({
-          message: `Ошибка подключения к ActiveMQ: ${error.message}`,
-        });
+        return;
       }
 
-      console.log("Успешное подключение к ActiveMQ");
+      console.log("Успешное SSL-подключение к ActiveMQ");
 
       const sendHeaders = {
         destination: "/queue/external.game.to.mobile",
