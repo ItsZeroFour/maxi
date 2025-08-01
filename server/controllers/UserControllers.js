@@ -231,7 +231,7 @@ export const activatePromocode = async (req, res) => {
         cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
         key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
 
-        rejectUnauthorized: true,
+        rejectUnauthorized: false,
         requestCert: true,
       },
       connectTimeout: 10000,
