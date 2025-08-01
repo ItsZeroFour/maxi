@@ -226,11 +226,11 @@ export const activatePromocode = async (req, res) => {
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: true,
+      ssl: false,
       sslOptions: {
         cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
         key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
-        rejectUnauthorized: false,
+        rejectUnauthorized: true,
         secureProtocol: "TLSv1_2_method",
       },
     };
