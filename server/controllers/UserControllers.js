@@ -4,7 +4,7 @@ import { promocodes } from "../data/promocodes.js";
 import fs from "fs";
 // import stompit from "stompit";
 import { Client } from "@stomp/stompjs";
-import "websocket-polyfill";
+import WebSocket from "ws";
 
 dotenv.config();
 
@@ -215,6 +215,7 @@ export const completeOnbording = async (req, res) => {
 };
 
 export const activatePromocode = async (req, res) => {
+  let client;
   try {
     const token = req.user_token;
     const promocode = req.body.promocode;
@@ -224,20 +225,28 @@ export const activatePromocode = async (req, res) => {
       return res.status(404).json({ message: "Промокод не найден" });
     }
 
-    const client = new Client({
-      brokerURL: "wss://mq-test.maxi-retail.ru:61617",
+    // 1. Настраиваем клиент
+    client = new Client({
+      brokerURL: "wss://mq-test.maxi-retail.ru:61617/ws", // Добавляем /ws если требуется
+      webSocketFactory: () =>
+        new WebSocket("wss://mq-test.maxi-retail.ru:61617", {
+          rejectUnauthorized: false, // Отключаем проверку сертификата для тестов
+          perMessageDeflate: false,
+          handshakeTimeout: 10000, // 10 секунд таймаут
+        }),
       connectHeaders: {
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         host: "/",
         "heart-beat": "5000,5000",
       },
-      debug: (str) => console.log("STOMP: ", str),
+      debug: (str) => console.log(`STOMP: ${str}`),
       reconnectDelay: 0,
-      heartbeatIncoming: 5000,
-      heartbeatOutgoing: 5000,
+      heartbeatIncoming: 0,
+      heartbeatOutgoing: 0,
     });
 
+    // 2. Ожидаем подключения
     const connectionPromise = new Promise((resolve, reject) => {
       client.onConnect = () => {
         console.log("Успешное подключение к ActiveMQ");
@@ -245,21 +254,25 @@ export const activatePromocode = async (req, res) => {
       };
 
       client.onStompError = (frame) => {
-        console.error("STOMP протокол ошибка:", frame.headers.message);
-        reject(new Error(frame.headers.message));
+        reject(
+          new Error(
+            `STOMP ошибка: ${frame.headers?.message || "Неизвестная ошибка"}`
+          )
+        );
       };
 
-      client.onWebSocketError = (error) => {
-        console.error("WebSocket ошибка:", error);
-        reject(error);
+      client.onWebSocketError = (event) => {
+        console.error("WebSocket ошибка:", event);
+        reject(new Error(event.message || "WebSocket connection failed"));
       };
     });
 
+    // 3. Активируем подключение
     client.activate();
-
     await connectionPromise;
 
-    const sendResult = await new Promise((resolve, reject) => {
+    // 4. Отправляем сообщение
+    await new Promise((resolve, reject) => {
       client.publish({
         destination: "/queue/external.game.to.mobile",
         body: JSON.stringify({
@@ -271,29 +284,36 @@ export const activatePromocode = async (req, res) => {
           "content-type": "application/json",
         },
       });
-
-      setTimeout(resolve, 500);
+      setTimeout(resolve, 300); // Даем время на отправку
     });
 
     console.log("Промокод успешно отправлен");
 
-    await client.deactivate();
-
+    // 5. Обновляем пользователя
     await User.updateOne(
       { user_token: token },
       { $push: { activated_promo_codes: promocode } }
     );
 
     return res.status(200).json({
-      activate_promocode: true,
+      success: true,
       promocode: promocode,
     });
   } catch (error) {
-    console.error("Ошибка активации промокода:", {
+    console.error("Полная ошибка:", {
       message: error.message,
       stack: error.stack,
       code: error.code,
+      type: error.type,
     });
+
+    if (client) {
+      try {
+        await client.deactivate();
+      } catch (deactivateError) {
+        console.error("Ошибка при деактивации клиента:", deactivateError);
+      }
+    }
 
     if (!res.headersSent) {
       return res.status(500).json({
