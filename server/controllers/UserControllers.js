@@ -1,10 +1,10 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import fs from "fs";
-// import stompit from "stompit";
 import { Client } from "@stomp/stompjs";
-import WebSocket from "ws";
+import net from "net";
+import tls from "tls";
+import { Buffer } from "buffer";
 
 dotenv.config();
 
@@ -225,28 +225,61 @@ export const activatePromocode = async (req, res) => {
       return res.status(404).json({ message: "Промокод не найден" });
     }
 
-    // 1. Настраиваем клиент
+    // 1. Создаем TCP/SSL соединение напрямую
+    const socket = tls.connect({
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      rejectUnauthorized: false,
+      servername: "mq-test.maxi-retail.ru",
+    });
+
+    // 2. Настраиваем STOMP клиент с кастомным подключением
     client = new Client({
-      brokerURL: "wss://mq-test.maxi-retail.ru:61617/ws", // Добавляем /ws если требуется
-      webSocketFactory: () =>
-        new WebSocket("wss://mq-test.maxi-retail.ru:61617", {
-          rejectUnauthorized: false, // Отключаем проверку сертификата для тестов
-          perMessageDeflate: false,
-          handshakeTimeout: 10000, // 10 секунд таймаут
-        }),
+      brokerURL: "ssl://mq-test.maxi-retail.ru:61617",
       connectHeaders: {
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         host: "/",
         "heart-beat": "5000,5000",
       },
+      webSocketFactory: () => ({
+        send: (data) => socket.write(data),
+        close: () => socket.end(),
+        onmessage: null,
+        onopen: null,
+        onclose: null,
+        onerror: null,
+      }),
       debug: (str) => console.log(`STOMP: ${str}`),
       reconnectDelay: 0,
-      heartbeatIncoming: 0,
-      heartbeatOutgoing: 0,
     });
 
-    // 2. Ожидаем подключения
+    // 3. Обработчики событий сокета
+    socket.on("data", (data) => {
+      if (client.stompHandler.onmessage) {
+        client.stompHandler.onmessage({ data: data.toString() });
+      }
+    });
+
+    socket.on("connect", () => {
+      if (client.stompHandler.onopen) {
+        client.stompHandler.onopen();
+      }
+    });
+
+    socket.on("error", (err) => {
+      if (client.stompHandler.onerror) {
+        client.stompHandler.onerror(err);
+      }
+    });
+
+    socket.on("close", () => {
+      if (client.stompHandler.onclose) {
+        client.stompHandler.onclose();
+      }
+    });
+
+    // 4. Ожидаем подключения
     const connectionPromise = new Promise((resolve, reject) => {
       client.onConnect = () => {
         console.log("Успешное подключение к ActiveMQ");
@@ -261,18 +294,16 @@ export const activatePromocode = async (req, res) => {
         );
       };
 
-      client.onWebSocketError = (event) => {
-        console.error("WebSocket ошибка:", event);
-        reject(new Error(event.message || "WebSocket connection failed"));
+      client.onWebSocketError = (err) => {
+        reject(err);
       };
     });
 
-    // 3. Активируем подключение
     client.activate();
     await connectionPromise;
 
-    // 4. Отправляем сообщение
-    await new Promise((resolve, reject) => {
+    // 5. Отправляем сообщение
+    await new Promise((resolve) => {
       client.publish({
         destination: "/queue/external.game.to.mobile",
         body: JSON.stringify({
@@ -284,16 +315,22 @@ export const activatePromocode = async (req, res) => {
           "content-type": "application/json",
         },
       });
-      setTimeout(resolve, 300); // Даем время на отправку
+      setTimeout(resolve, 300);
     });
 
     console.log("Промокод успешно отправлен");
 
-    // 5. Обновляем пользователя
+    // 6. Обновляем пользователя
     await User.updateOne(
       { user_token: token },
       { $push: { activated_promo_codes: promocode } }
     );
+
+    // 7. Закрываем соединение
+    await new Promise((resolve) => {
+      client.deactivate();
+      socket.end(resolve);
+    });
 
     return res.status(200).json({
       success: true,
@@ -304,7 +341,6 @@ export const activatePromocode = async (req, res) => {
       message: error.message,
       stack: error.stack,
       code: error.code,
-      type: error.type,
     });
 
     if (client) {
