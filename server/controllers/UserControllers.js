@@ -229,80 +229,61 @@ export const activatePromocode = async (req, res) => {
         .json({ message: "Не удалось найти промокод в полученных" });
     }
 
-    const tlsOptions = {
+    const connectOptions = {
       host: "mq-test.maxi-retail.ru",
       port: 61617,
-      servername: "mq-test.maxi-retail.ru",
+      ssl: true, // используем TLS
+      connectHeaders: {
+        host: "/",
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+        "accept-version": "1.2",
+      },
       rejectUnauthorized: true,
+      servername: "mq-test.maxi-retail.ru",
     };
 
-    const socket = tls.connect(tlsOptions, () => {
-      if (!socket.authorized) {
-        console.error("TLS не авторизовано:", socket.authorizationError);
-        return res
-          .status(500)
-          .json({ message: "TLS соединение не авторизовано" });
+    stompit.connect(connectOptions, async (error, client) => {
+      if (error) {
+        console.error("Ошибка подключения к STOMP:", error);
+        return res.status(500).json({ message: "Ошибка STOMP-соединения" });
       }
 
-      console.log("TLS соединение установлено");
+      console.log("Успешное подключение к ActiveMQ");
 
-      const connectOptions = {
-        connectHeaders: {
-          host: "/",
-          login: process.env.LOGIN,
-          passcode: process.env.PASSCODE,
-          "accept-version": "1.2",
-        },
-        transport: socket,
+      const sendHeaders = {
+        destination: "/queue/external.game.to.mobile",
+        _type: "gamePromoCode",
+        "content-type": "application/json",
       };
 
-      stompit.connect(connectOptions, async (error, client) => {
-        if (error) {
-          console.error("Ошибка подключения к STOMP:", error);
-          return res.status(500).json({ message: "Ошибка STOMP-соединения" });
-        }
+      const frame = client.send(sendHeaders);
+      frame.write(JSON.stringify(promoData));
+      frame.end();
 
-        console.log("Успешное подключение к ActiveMQ");
+      console.log("Промокод отправлен:", promoData);
 
-        const sendHeaders = {
-          destination: "/queue/external.game.to.mobile",
-          _type: "gamePromoCode",
-          "content-type": "application/json",
-        };
-
-        const frame = client.send(sendHeaders);
-        frame.write(JSON.stringify(promoData));
-        frame.end();
-
-        console.log("Промокод отправлен:", promoData);
-
-        client.disconnect(() => {
-          console.log("Отключено от STOMP");
-        });
-
-        try {
-          await User.findOneAndUpdate(
-            { user_token: token },
-            { $push: { activated_promo_codes: promocode } }
-          );
-
-          return res.status(200).json({
-            activate_promocode: true,
-            promocode,
-            token,
-          });
-        } catch (err) {
-          console.error("Ошибка обновления пользователя:", err.message);
-          return res
-            .status(500)
-            .json({ message: "Ошибка обновления пользователя" });
-        }
+      client.disconnect(() => {
+        console.log("Отключено от STOMP");
       });
-    });
 
-    socket.on("error", (err) => {
-      console.error("Ошибка TLS-соединения:", err.message);
-      return res.status(500).json({ message: "Ошибка TLS-соединения" });
+      try {
+        await User.findOneAndUpdate(
+          { user_token: token },
+          { $push: { activated_promo_codes: promocode } }
+        );
+
+        return res.status(200).json({
+          activate_promocode: true,
+          promocode,
+          token,
+        });
+      } catch (err) {
+        console.error("Ошибка обновления пользователя:", err.message);
+        return res
+          .status(500)
+          .json({ message: "Ошибка обновления пользователя" });
+      }
     });
   } catch (err) {
     console.error("Ошибка общего уровня:", err.message);
