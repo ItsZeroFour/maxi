@@ -218,13 +218,13 @@ export const activatePromocode = async (req, res) => {
     const promocode = req.body.promocode;
 
     const client = new Client({
-      brokerURL: "wss://mq-test.maxi-retail.ru:61617/ws",
+      brokerURL: "wss://mq-test.maxi-retail.ru:61617/",
       connectHeaders: {
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
       },
       webSocketFactory: () =>
-        new WebSocket("wss://mq-test.maxi-retail.ru:61617/ws"),
+        new WebSocket("wss://mq-test.maxi-retail.ru:61617/"),
       debug: console.log,
       reconnectDelay: 5000,
     });
