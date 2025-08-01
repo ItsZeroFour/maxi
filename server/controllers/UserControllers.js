@@ -226,14 +226,7 @@ export const activatePromocode = async (req, res) => {
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: {
-        ca: [fs.readFileSync("/etc/ssl/certs/ca-certificates.crt")],
-        cert: fs.readFileSync("/etc/nginx/certs/fullchain.pem"),
-        key: fs.readFileSync("/etc/nginx/certs/privkey.pem"),
-
-        rejectUnauthorized: false,
-        requestCert: true,
-      },
+      ssl: true,
       connectTimeout: 10000,
       reconnectOptions: {
         maxReconnects: 3,
