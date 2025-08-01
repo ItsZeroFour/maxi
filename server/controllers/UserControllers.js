@@ -1,8 +1,8 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
+import tls from 'tls';
 import stompit from "stompit";
-import tls from "tls";
 
 dotenv.config();
 
@@ -212,36 +212,6 @@ export const completeOnbording = async (req, res) => {
   }
 };
 
-function connectClientOverTls() {
-  return new Promise((resolve, reject) => {
-    const tlsOptions = {
-      host: "mq-test.maxi-retail.ru",
-      port: 61617,
-      rejectUnauthorized: false,
-    };
-
-    const socket = tls.connect(tlsOptions);
-
-    socket.once("secureConnect", () => {
-      const connectOptions = {
-        connectHeaders: {
-          host: "/",
-          login: process.env.LOGIN,
-          passcode: process.env.PASSCODE,
-          "heart-beat": "5000,5000",
-        },
-      };
-
-      const client = new stompit.Client(socket, connectOptions);
-      resolve(client);
-    });
-
-    socket.once("error", (err) => {
-      reject(err);
-    });
-  });
-}
-
 export const activatePromocode = async (req, res) => {
   try {
     const token = req.user_token;
@@ -249,7 +219,7 @@ export const activatePromocode = async (req, res) => {
 
     const user = await User.findOne({ user_token: token });
 
-    if (!user.promo_codes.includes(promocode)) {
+    if (!user || !user.promo_codes.includes(promocode)) {
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
       });
@@ -260,8 +230,29 @@ export const activatePromocode = async (req, res) => {
       promocode: promocode,
     };
 
-    try {
-      const client = await connectClientOverTls();
+    // Подключение через TLS
+    const tlsOptions = {
+      host: "mq-test.maxi-retail.ru",
+      port: 61617,
+      rejectUnauthorized: false,
+    };
+
+    const socket = tls.connect(tlsOptions);
+
+    socket.once("secureConnect", () => {
+      const connectHeaders = {
+        host: "mq-test.maxi-retail.ru", // ВАЖНО: не '/'
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+        "heart-beat": "5000,5000",
+        "accept-version": "1.1",
+      };
+
+      const client = new stompit.Client(socket, { connectHeaders });
+
+      client.on("error", (err) => {
+        console.error("STOMP клиент упал:", err.message);
+      });
 
       const sendHeaders = {
         destination: "/queue/external.game.to.mobile",
@@ -275,24 +266,28 @@ export const activatePromocode = async (req, res) => {
 
       console.log("Промокод отправлен:", promoData);
 
-      client.disconnect();
-
-      await User.findOneAndUpdate(
-        { user_token: token },
-        { $push: { activated_promo_codes: promocode } }
-      );
-
-      return res.status(200).json({
-        activate_promocode: true,
-        promocode: promocode,
-        token,
+      client.disconnect(() => {
+        console.log("Отключено от ActiveMQ");
       });
-    } catch (error) {
-      console.error("Ошибка подключения к ActiveMQ:", error.message);
+    });
+
+    socket.once("error", (err) => {
+      console.error("Ошибка TLS подключения:", err.message);
       return res.status(500).json({
-        message: `Ошибка подключения к ActiveMQ: ${error.message}`,
+        message: `Ошибка подключения к ActiveMQ: ${err.message}`,
       });
-    }
+    });
+
+    await User.findOneAndUpdate(
+      { user_token: token },
+      { $push: { activated_promo_codes: promocode } }
+    );
+
+    return res.status(200).json({
+      activate_promocode: true,
+      promocode: promocode,
+      token,
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({
