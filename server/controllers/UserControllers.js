@@ -1,8 +1,7 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import { Client } from "@stomp/stompjs";
-import * as tls from "tls";
+import StompClient from "stomp-client";
 
 dotenv.config();
 
@@ -217,66 +216,43 @@ export const activatePromocode = async (req, res) => {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
-    // Verify user and promo code first
     const user = await User.findOne({ user_token: token });
-
     if (!user || !user.promo_codes.includes(promocode)) {
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
       });
     }
 
-    // STOMP Client with custom TLS socket connection
-    const client = new Client({
-      // Custom webSocketFactory using TLS socket for ssl:// connection
-      webSocketFactory: () =>
-        tls.connect({
-          host: "mq-test.maxi-retail.ru",
-          port: 61617,
-          rejectUnauthorized: false, // Change for production!
-        }),
-      connectHeaders: {
-        login: process.env.LOGIN,
-        passcode: process.env.PASSCODE,
-      },
-      debug: (str) => {
-        console.log("[STOMP]", str);
-      },
-      reconnectDelay: 5000,
-    });
+    const BROKER_HOST = "mq-test.maxi-retail.ru";
+    const BROKER_PORT = 61617;
+    const USERNAME = process.env.LOGIN;
+    const PASSWORD = process.env.PASSCODE;
+    const QUEUE = "/queue/external.game.to.mobile";
 
-    // Promise wrapper so we wait for sending before returning response
+    const client = new StompClient(
+      BROKER_HOST,
+      BROKER_PORT,
+      USERNAME,
+      PASSWORD,
+      "1.2",
+      null,
+      true // use SSL
+    );
+
     await new Promise((resolve, reject) => {
-      client.onConnect = () => {
-        const destination = "/queue/external.game.to.mobile";
-        const body = JSON.stringify({
-          user_token: token,
-          promocode: promocode,
-        });
+      client.connect(
+        (sessionId) => {
+          const headers = { _type: "gamePromoCode" };
+          const messageBody = JSON.stringify({ user_token: token, promocode });
 
-        client.publish({
-          destination,
-          body,
-          headers: { _type: "gamePromoCode" },
-        });
-
-        client.deactivate();
-        resolve();
-      };
-
-      client.onStompError = (frame) => {
-        console.error("Broker error:", frame.headers["message"]);
-        client.deactivate();
-        reject(new Error(frame.headers["message"]));
-      };
-
-      client.onWebSocketError = (error) => {
-        console.error("WebSocket error:", error);
-        client.deactivate();
-        reject(error);
-      };
-
-      client.activate();
+          client.publish(QUEUE, messageBody, headers);
+          client.disconnect();
+          resolve();
+        },
+        (error) => {
+          reject(error);
+        }
+      );
     });
 
     return res.status(200).json({
