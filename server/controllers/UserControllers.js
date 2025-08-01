@@ -1,9 +1,8 @@
 import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
-import { StompClient } from "stomp-client";
-import fs from "fs";
-import tls from "tls";
+import { Client } from "@stomp/stompjs";
+import WebSocket from "ws";
 
 dotenv.config();
 
@@ -218,12 +217,17 @@ export const activatePromocode = async (req, res) => {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
-    const HOST = "mq-test.maxi-retail.ru";
-    const PORT = 61617;
-    const USER = process.env.LOGIN;
-    const PASS = process.env.PASSCODE;
-    const QUEUE = "/queue/external.game.to.mobile";
-    const HEADER_TYPE = { _type: "gamePromoCode" };
+    const client = new Client({
+      brokerURL: "wss://mq-test.maxi-retail.ru:61614/ws",
+      connectHeaders: {
+        login: process.env.LOGIN,
+        passcode: process.env.PASSCODE,
+      },
+      webSocketFactory: () =>
+        new WebSocket("wss://mq-test.maxi-retail.ru:61614/ws"),
+      debug: console.log,
+      reconnectDelay: 5000,
+    });
 
     const MESSAGE = {
       user_token: token,
@@ -237,29 +241,23 @@ export const activatePromocode = async (req, res) => {
         message: "Не удалось найти промокод в полученных",
       });
     } else {
-      const client = new StompClient(
-        HOST,                    // ✅ CORRECT: just 'mq-test.maxi-retail.ru'
-        PORT,                    // ✅ 61617
-        USER,                    // ✅ your login
-        PASS,                    // ✅ your password
-        '1.0',                   // ✅ this is the actual STOMP version
-        null,                    // ✅ virtual host (null = default)
-        {
-          ssl: true,             // ✅ enable SSL
-          rejectUnauthorized: false // ✅ skip TLS cert verification (testing only)
-        }
-      );
-
-      client.connect(() => {
-        console.log("Connected to ActiveMQ.");
-
-        client.publish(QUEUE, JSON.stringify(MESSAGE), HEADER_TYPE);
-        console.log("Message sent:", MESSAGE);
-
-        client.disconnect(() => {
-          console.log("Disconnected.");
+      client.onConnect = function () {
+        const destination = "/queue/external.game.to.mobile";
+        const body = JSON.stringify({
+          user_token: req.user_token,
+          promocode: req.body.promocode,
         });
-      });
+
+        client.publish({
+          destination,
+          body,
+          headers: { _type: "gamePromoCode" },
+        });
+
+        client.deactivate();
+      };
+
+      client.activate();
 
       return res.status(200).json({
         activate_promocode: true,
