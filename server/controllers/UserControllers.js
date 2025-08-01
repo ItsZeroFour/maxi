@@ -216,6 +216,8 @@ export const completeOnbording = async (req, res) => {
 
 export const activatePromocode = async (req, res) => {
   let client;
+  let socket;
+
   try {
     const token = req.user_token;
     const promocode = req.body.promocode;
@@ -225,15 +227,34 @@ export const activatePromocode = async (req, res) => {
       return res.status(404).json({ message: "Промокод не найден" });
     }
 
-    // 1. Создаем TCP/SSL соединение напрямую
-    const socket = tls.connect({
+    // 1. Создаем кастомный транспортный слой
+    class CustomTransport {
+      constructor(socket) {
+        this.socket = socket;
+        this.onmessage = null;
+        this.onopen = null;
+        this.onclose = null;
+        this.onerror = null;
+      }
+
+      send(data) {
+        this.socket.write(data);
+      }
+
+      close() {
+        this.socket.end();
+      }
+    }
+
+    // 2. Устанавливаем SSL соединение
+    socket = tls.connect({
       host: "mq-test.maxi-retail.ru",
       port: 61617,
       rejectUnauthorized: false,
       servername: "mq-test.maxi-retail.ru",
     });
 
-    // 2. Настраиваем STOMP клиент с кастомным подключением
+    // 3. Настраиваем STOMP клиент
     client = new Client({
       brokerURL: "ssl://mq-test.maxi-retail.ru:61617",
       connectHeaders: {
@@ -242,44 +263,40 @@ export const activatePromocode = async (req, res) => {
         host: "/",
         "heart-beat": "5000,5000",
       },
-      webSocketFactory: () => ({
-        send: (data) => socket.write(data),
-        close: () => socket.end(),
-        onmessage: null,
-        onopen: null,
-        onclose: null,
-        onerror: null,
-      }),
       debug: (str) => console.log(`STOMP: ${str}`),
       reconnectDelay: 0,
     });
 
-    // 3. Обработчики событий сокета
+    // 4. Создаем кастомный транспорт
+    const transport = new CustomTransport(socket);
+    client.webSocket = transport;
+
+    // 5. Обработчики событий сокета
     socket.on("data", (data) => {
-      if (client.stompHandler.onmessage) {
-        client.stompHandler.onmessage({ data: data.toString() });
+      if (transport.onmessage) {
+        transport.onmessage({ data: data.toString() });
       }
     });
 
-    socket.on("connect", () => {
-      if (client.stompHandler.onopen) {
-        client.stompHandler.onopen();
+    socket.on("secureConnect", () => {
+      if (transport.onopen) {
+        transport.onopen();
       }
     });
 
     socket.on("error", (err) => {
-      if (client.stompHandler.onerror) {
-        client.stompHandler.onerror(err);
+      if (transport.onerror) {
+        transport.onerror(err);
       }
     });
 
     socket.on("close", () => {
-      if (client.stompHandler.onclose) {
-        client.stompHandler.onclose();
+      if (transport.onclose) {
+        transport.onclose();
       }
     });
 
-    // 4. Ожидаем подключения
+    // 6. Ожидаем подключения
     const connectionPromise = new Promise((resolve, reject) => {
       client.onConnect = () => {
         console.log("Успешное подключение к ActiveMQ");
@@ -302,7 +319,7 @@ export const activatePromocode = async (req, res) => {
     client.activate();
     await connectionPromise;
 
-    // 5. Отправляем сообщение
+    // 7. Отправляем сообщение
     await new Promise((resolve) => {
       client.publish({
         destination: "/queue/external.game.to.mobile",
@@ -320,13 +337,13 @@ export const activatePromocode = async (req, res) => {
 
     console.log("Промокод успешно отправлен");
 
-    // 6. Обновляем пользователя
+    // 8. Обновляем пользователя
     await User.updateOne(
       { user_token: token },
       { $push: { activated_promo_codes: promocode } }
     );
 
-    // 7. Закрываем соединение
+    // 9. Закрываем соединение
     await new Promise((resolve) => {
       client.deactivate();
       socket.end(resolve);
@@ -349,6 +366,10 @@ export const activatePromocode = async (req, res) => {
       } catch (deactivateError) {
         console.error("Ошибка при деактивации клиента:", deactivateError);
       }
+    }
+
+    if (socket) {
+      socket.destroy();
     }
 
     if (!res.headersSent) {
