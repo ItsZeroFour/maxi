@@ -2,6 +2,7 @@ import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
 import stompit from "stompit";
+import fs from "fs";
 
 dotenv.config();
 
