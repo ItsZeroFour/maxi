@@ -233,9 +233,6 @@ export const activatePromocode = async (req, res) => {
         ciphers:
           "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA",
         debug: true,
-        secureOptions:
-          require("constants").SSL_OP_NO_SSLv3 |
-          require("constants").SSL_OP_NO_SSLv2,
       },
     };
 
