@@ -217,6 +217,13 @@ export const activatePromocode = async (req, res) => {
     const token = req.user_token;
     const promocode = req.body.promocode;
 
+    const user = await User.findOne({ user_token: token });
+    if (!user.promo_codes.includes(promocode)) {
+      return res.status(404).json({
+        message: "Не удалось найти промокод в полученных",
+      });
+    }
+
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
       port: 61617,
@@ -230,9 +237,11 @@ export const activatePromocode = async (req, res) => {
       sslOptions: {
         rejectUnauthorized: false,
         secureProtocol: "TLSv1_2_method",
-        ciphers:
-          "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA",
-        debug: true,
+        ciphers: "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256",
+      },
+      connectTimeout: 10000,
+      reconnectOptions: {
+        maxReconnects: 0,
       },
     };
 
@@ -241,56 +250,69 @@ export const activatePromocode = async (req, res) => {
       promocode: promocode,
     };
 
-    const user = await User.findOne({ user_token: token });
+    const responseSent = { current: false };
 
-    if (!user.promo_codes.includes(promocode)) {
-      return res.status(404).json({
-        message: "Не удалось найти промокод в полученных",
-      });
-    } else {
+    const client = await new Promise((resolve, reject) => {
       stompit.connect(connectOptions, (error, client) => {
         if (error) {
-          console.error("Полная ошибка подключения:", error);
-          console.error("Stack trace:", error.stack);
-          return res.status(500).json({
-            message: `Ошибка подключения: ${error.message}`,
+          console.error("Ошибка подключения:", {
+            message: error.message,
+            stack: error.stack,
+            fullError: error,
           });
+          reject(error);
+          return;
         }
-
-        console.log("Успешное подключение к ActiveMQ");
-
-        const sendHeaders = {
-          destination: "/queue/external.game.to.mobile",
-          _type: "gamePromoCode",
-          "content-type": "application/json",
-        };
-
-        const frame = client.send(sendHeaders);
-        frame.write(JSON.stringify(promoData));
-        frame.end();
-
-        console.log("Промокод отправлен:", promoData);
-
-        client.disconnect(() => {
-          console.log("Отключено от ActiveMQ");
-        });
-
-        User.findOneAndUpdate(
-          { user_token: token },
-          { $push: { activated_promo_codes: promocode } }
-        ).catch((err) => console.error("Ошибка обновления БД:", err));
+        resolve(client);
       });
-
-      return res.status(200).json({
-        activate_promocode: true,
-        promocode: promocode,
-        token,
-      });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      message: "Не удалось активировать промокод",
     });
+
+    console.log("Успешное подключение к ActiveMQ");
+
+    const sendHeaders = {
+      destination: "/queue/external.game.to.mobile",
+      _type: "gamePromoCode",
+      "content-type": "application/json",
+    };
+
+    await new Promise((resolve, reject) => {
+      const frame = client.send(sendHeaders);
+      frame.write(JSON.stringify(promoData));
+      frame.end();
+
+      frame.on("error", reject);
+      frame.on("finish", resolve);
+    });
+
+    console.log("Промокод отправлен:", promoData);
+
+    await new Promise((resolve) => client.disconnect(resolve));
+    console.log("Отключено от ActiveMQ");
+
+    await User.findOneAndUpdate(
+      { user_token: token },
+      { $push: { activated_promo_codes: promocode } }
+    );
+
+    return res.status(200).json({
+      activate_promocode: true,
+      promocode: promocode,
+      token,
+    });
+  } catch (err) {
+    console.error("Ошибка активации промокода:", {
+      message: err.message,
+      stack: err.stack,
+      fullError: err,
+    });
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        message: "Не удалось активировать промокод",
+        error: process.env.NODE_ENV === "development" ? err.message : undefined,
+      });
+    } else {
+      console.error("Попытка отправить ответ после отправки заголовков");
+    }
   }
 };
