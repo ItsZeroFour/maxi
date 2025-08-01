@@ -234,7 +234,7 @@ export const activatePromocode = async (req, res) => {
       BROKER_PORT,
       USERNAME,
       PASSWORD,
-      "1.2",
+      "1.1",
       null,
       true // use SSL
     );
