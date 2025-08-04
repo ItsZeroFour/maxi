@@ -219,16 +219,19 @@ export const activatePromocode = async (req, res) => {
 
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
-      port: 61617,
+      port: 61613,
       connectHeaders: {
         host: "/",
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: true,
-      rejectUnauthorized: false,
-      checkServerIdentity: () => {},
+      ssl: false,
+      connectTimeout: 10000,
+      reconnectOptions: {
+        maxReconnects: 3,
+        retryDelay: 5000,
+      },
     };
 
     const promoData = {
