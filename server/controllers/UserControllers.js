@@ -226,10 +226,9 @@ export const activatePromocode = async (req, res) => {
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
-      ssl: {
-        enabled: true,
-        rejectUnauthorized: false,
-      },
+      ssl: true,
+
+      rejectUnauthorized: false,
       protocol: "ssl",
     };
 
