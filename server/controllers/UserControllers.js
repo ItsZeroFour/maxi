@@ -2,7 +2,7 @@ import User from "../models/User.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
 import stompit from "stompit";
-import tls from "tls";
+import fs from "fs";
 
 dotenv.config();
 
@@ -219,13 +219,20 @@ export const activatePromocode = async (req, res) => {
 
     const connectOptions = {
       host: "mq-test.maxi-retail.ru",
-      port: 61617,
+      port: 61612,
+      ssl: true,
       connectHeaders: {
         host: "/",
         login: process.env.LOGIN,
         passcode: process.env.PASSCODE,
         "heart-beat": "5000,5000",
       },
+      rejectUnauthorized: false,
+    };
+
+    const promoData = {
+      user_token: token,
+      promocode: promocode,
     };
 
     const user = await User.findOne({ user_token: token });
@@ -239,84 +246,52 @@ export const activatePromocode = async (req, res) => {
       });
     }
 
-    const promoData = {
-      user_token: token,
-      promocode: promocode,
-    };
-
     const sendPromoData = () => {
       return new Promise((resolve, reject) => {
-        // Создаем TLS-соединение
-        const tlsSocket = tls.connect(
-          {
-            host: connectOptions.host,
-            port: connectOptions.port,
-            rejectUnauthorized: false, // ❗ Только для тестов. В проде нужно true и cert
-          },
-          () => {
-            // Теперь создаем соединение STOMP поверх TLS-сокета
-            stompit.connect(
-              { ...connectOptions, socket: tlsSocket },
-              (error, client) => {
-                if (error) {
-                  console.error(
-                    `[activatePromocode] Ошибка подключения к ActiveMQ:`,
-                    error.stack || error
-                  );
-                  return reject(error);
-                }
-
-                client.on("error", (err) => {
-                  console.error(
-                    `[activatePromocode] Ошибка соединения ActiveMQ:`,
-                    err.stack || err
-                  );
-                  reject(err);
-                });
-
-                console.log(
-                  "[activatePromocode] Успешное подключение к ActiveMQ"
-                );
-
-                const sendHeaders = {
-                  destination: "/queue/external.game.to.mobile",
-                  _type: "gamePromoCode",
-                  "content-type": "application/json",
-                };
-
-                const frame = client.send(sendHeaders);
-
-                frame.on("error", (frameError) => {
-                  console.error(
-                    `[activatePromocode] Ошибка отправки frame:`,
-                    frameError.stack || frameError
-                  );
-                  client.disconnect(() => {});
-                  reject(frameError);
-                });
-
-                frame.write(JSON.stringify(promoData));
-                frame.end(() => {
-                  console.log(
-                    "[activatePromocode] Промокод отправлен:",
-                    promoData
-                  );
-                  client.disconnect(() => {
-                    console.log("[activatePromocode] Отключено от ActiveMQ");
-                    resolve();
-                  });
-                });
-              }
+        stompit.connect(connectOptions, (error, client) => {
+          if (error) {
+            console.error(
+              `[activatePromocode] Ошибка подключения к ActiveMQ:`,
+              error.stack || error
             );
+            return reject(error);
           }
-        );
 
-        tlsSocket.on("error", (err) => {
-          console.error(
-            "[activatePromocode] Ошибка TLS-соединения:",
-            err.stack || err
-          );
-          reject(err);
+          client.on("error", (err) => {
+            console.error(
+              `[activatePromocode] Ошибка соединения ActiveMQ:`,
+              err.stack || err
+            );
+            reject(err);
+          });
+
+          console.log("[activatePromocode] Успешное подключение к ActiveMQ");
+
+          const sendHeaders = {
+            destination: "/queue/external.game.to.mobile",
+            _type: "gamePromoCode",
+            "content-type": "application/json",
+          };
+
+          const frame = client.send(sendHeaders);
+
+          frame.on("error", (frameError) => {
+            console.error(
+              `[activatePromocode] Ошибка отправки frame:`,
+              frameError.stack || frameError
+            );
+            client.disconnect(() => {});
+            reject(frameError);
+          });
+
+          frame.write(JSON.stringify(promoData));
+          frame.end(() => {
+            console.log("[activatePromocode] Промокод отправлен:", promoData);
+            client.disconnect(() => {
+              console.log("[activatePromocode] Отключено от ActiveMQ");
+              resolve();
+            });
+          });
         });
       });
     };
