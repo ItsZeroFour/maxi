@@ -10,8 +10,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@stomp/stompjs": "^7.1.1",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
+    "buffer": "^6.0.3",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^16.6.0",
@@ -22,6 +24,12 @@
     "mongoose": "^8.16.1",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
-    "nodemon": "^3.1.10"
+    "net": "^1.0.2",
+    "node-cron": "^4.2.1",
+    "nodemon": "^3.1.10",
+    "stomp-client": "^0.9.0",
+    "stompit": "^1.0.0",
+    "tls": "^0.0.1",
+    "websocket-polyfill": "^1.0.0"
   }
 }
