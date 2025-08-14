@@ -114,7 +114,7 @@ export const levelStart = async (req, res) => {
   try {
     const user_token = req.user_token;
 
-    const user = await User.findById(user_token);
+    const user = await User.findOne({ user_token });
 
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
