@@ -156,7 +156,7 @@ export const levelComplete = async (req, res) => {
 
     const user = await User.findOne({ user_token: token });
 
-    if (user.promo_codes.includes(promocodes[levelCount])) {
+    if (user.promo_codes.includes(promocodes[+levelCount - 1])) {
       return res.status(201).json({
         message: "Промокод уже получен",
         is_promocode_get: false,
@@ -169,7 +169,7 @@ export const levelComplete = async (req, res) => {
       { user_token: token },
       {
         $push: {
-          promo_codes: promocodes[levelCount],
+          promo_codes: promocodes[+levelCount - 1],
           completedLevels: {
             level: levelCount,
           },
@@ -180,7 +180,7 @@ export const levelComplete = async (req, res) => {
     return res.status(201).json({
       message: "Промокод получен",
       is_promocode_get: true,
-      promocode: promocodes[levelCount],
+      promocode: promocodes[+levelCount - 1],
       token,
     });
   } catch (err) {
