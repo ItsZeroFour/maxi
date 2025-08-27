@@ -311,7 +311,7 @@ export const activatePromocode = async (req, res) => {
       });
     } catch (err) {
       console.error(
-        `[activatePromocode] Ошибка при отправке в stomp или обновлении базы:`,
+        `[activatePromocode] Ошибка при отправке в stomp   или обновлении базы:`,
         err.stack || err
       );
       return res.status(500).json({
