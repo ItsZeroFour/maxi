@@ -89,7 +89,7 @@ async function start() {
         setupDailyReset();
 
         cron.schedule(
-          "0 0 * * *",
+          "0 * * * *",
           async () => {
             try {
               await exportDailyStatsOnce();
