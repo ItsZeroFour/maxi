@@ -1,6 +1,12 @@
 import { google } from "googleapis";
-import serviceAccount from "../data/sheet-key.json" assert { type: "json" };
+// import serviceAccount from "../data/sheet-key.json" assert { type: "json" };
 import User from "../models/User.js";
+import fs from 'fs';
+import path from 'path';
+
+const serviceAccount = JSON.parse(
+  fs.readFileSync(path.resolve('../server/data/sheet-key.json'), 'utf-8')
+);
 
 const SPREADSHEET_ID = "19o6ygoCrRZ6I09zOgYrm4le-CdZlM8urp2vjappCuRc";
 const SHEET_TITLE = "Sheet1";
