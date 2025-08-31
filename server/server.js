@@ -9,11 +9,13 @@ import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
+import cron from "node-cron";
 
 /* ROUTES */
 import userRoutes from "./routes/UserRoutes.js";
 import AttemptsRoutes from "./routes/AttemptsRoutes.js";
 import { setupDailyReset } from "./utils/refreshAttempts.js";
+import { exportDailyStatsOnce } from "./utils/exportDataToExcel.js";
 
 dotenv.config({ path: "./.env" });
 const app = express();
@@ -84,7 +86,21 @@ async function start() {
       .connect(MONGO_URI)
       .then(() => {
         console.log("Mongo db connection successfully");
-        setupDailyReset()
+        setupDailyReset();
+
+        cron.schedule(
+          "0 0 * * *",
+          async () => {
+            try {
+              await exportDailyStatsOnce();
+            } catch (e) {
+              console.error("❌ Ошибка экспорта статистики:", e?.message || e);
+            }
+          },
+          {
+            timezone: "Europe/Moscow",
+          }
+        );
       })
       .catch((err) => console.log(err));
 
