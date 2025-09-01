@@ -1,11 +1,11 @@
 import { google } from "googleapis";
 // import serviceAccount from "../data/sheet-key.json" assert { type: "json" };
 import User from "../models/User.js";
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 const serviceAccount = JSON.parse(
-  fs.readFileSync(path.resolve('../server/data/sheet-key.json'), 'utf-8')
+  fs.readFileSync(path.resolve("../server/data/sheet-key.json"), "utf-8")
 );
 
 const SPREADSHEET_ID = "19o6ygoCrRZ6I09zOgYrm4le-CdZlM8urp2vjappCuRc";
@@ -39,7 +39,11 @@ function todayStr() {
 }
 
 async function ensureMetricsColumn(sheets) {
-  const metrics = [["Метрика"], ["Всего юзеров в базе"]];
+  const metrics = [
+    ["Метрика"],
+    ["Всего юзеров в базе"],
+    ["Неизрасходованно бонусных попыток"],
+  ];
   for (let i = 1; i <= MAX_LEVEL; i++) {
     metrics.push([`Прошли ${i} уровень`]);
   }
@@ -110,25 +114,36 @@ async function getStats() {
     {
       $project: {
         len: { $size: { $ifNull: ["$completedLevels", []] } },
+        maxi_attempts: { $ifNull: ["$maxi_attempts", 0] },
       },
     },
     {
       $group: {
         _id: "$len",
         c: { $sum: 1 },
+        totalBonusAttempts: { $sum: "$maxi_attempts" },
       },
     },
   ]);
 
   const totalUsers = groups.reduce((acc, g) => acc + g.c, 0);
+  const totalBonusAttempts = groups.reduce(
+    (acc, g) => acc + g.totalBonusAttempts,
+    0
+  );
 
-  const byLen = new Map(groups.map((g) => [g._id, g.c]));
+  const byLen = new Map(
+    groups.map((g) => [
+      g._id,
+      { count: g.c, bonusAttempts: g.totalBonusAttempts },
+    ])
+  );
 
-  const result = { totalUsers };
+  const result = { totalUsers, totalBonusAttempts };
   for (let i = 1; i <= MAX_LEVEL; i++) {
     let sum = 0;
-    for (const [len, count] of byLen) {
-      if (len >= i) sum += count;
+    for (const [len, data] of byLen) {
+      if (len >= i) sum += data.count;
     }
     result[i] = sum;
   }
@@ -138,13 +153,13 @@ async function getStats() {
 async function writeStatsToColumn(sheets, colNum, stats) {
   const colLetter = toColumnName(colNum);
 
-  const values = [[stats.totalUsers]];
+  const values = [[stats.totalUsers], [stats.totalBonusAttempts]];
   for (let i = 1; i <= MAX_LEVEL; i++) {
     values.push([stats[i]]);
   }
 
   const startRow = 2;
-  const endRow = 1 + 1 + MAX_LEVEL;
+  const endRow = 1 + 2 + MAX_LEVEL;
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
