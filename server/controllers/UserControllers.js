@@ -43,7 +43,11 @@ export const userGet = async (req, res) => {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
 
-    const formattedAttemptsAccrual = user.attemptsAccrual.map((accrual) => ({
+    const sortedAttemptsAccrual = user.attemptsAccrual
+      .slice()
+      .sort((a, b) => new Date(b.accrualAt) - new Date(a.accrualAt));
+
+    const formattedAttemptsAccrual = sortedAttemptsAccrual.map((accrual) => ({
       type: accrual.type,
       count: accrual.count,
       accrualAt: accrual.accrualAt.toISOString().slice(0, 19),
