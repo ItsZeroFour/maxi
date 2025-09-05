@@ -31,7 +31,7 @@ export const userAuthorization = async (req, res) => {
 
 export const userGet = async (req, res) => {
   try {
-    const user_token = req.params.token;
+    const user_token = req.query.user_token;
 
     if (!user_token) {
       return res.status(400).json({ error: "user_token не найден в токене" });
@@ -58,7 +58,7 @@ export const userGet = async (req, res) => {
       onbording_complete: user.onbording_complete,
       completedLevels: user.completedLevels,
       attemptsAccrual: formattedAttemptsAccrual,
-    }); 
+    });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Ошибка получения пользователя" });

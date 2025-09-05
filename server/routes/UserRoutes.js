@@ -5,7 +5,7 @@ import checkToken from "../utils/checkToken.js";
 const router = express.Router();
 
 router.post("/auth", checkToken, UserControllers.userAuthorization);
-router.get("/get/:token", checkToken, UserControllers.userGet);
+router.get("/get", checkToken, UserControllers.userGet);
 router.post(
   "/level-complete/:level",
   checkToken,
