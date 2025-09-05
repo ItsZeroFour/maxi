@@ -31,7 +31,7 @@ export const userAuthorization = async (req, res) => {
 
 export const userGet = async (req, res) => {
   try {
-    const user_token = req.user_token;
+    const user_token = req.params.token;
 
     if (!user_token) {
       return res.status(400).json({ error: "user_token не найден в токене" });
@@ -43,7 +43,22 @@ export const userGet = async (req, res) => {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
 
-    return res.status(200).json(user._doc);
+    const formattedAttemptsAccrual = user.attemptsAccrual.map((accrual) => ({
+      type: accrual.type,
+      count: accrual.count,
+      accrualAt: accrual.accrualAt.toISOString().slice(0, 19),
+    }));
+
+    return res.status(200).json({
+      user_token: user.user_token,
+      promo_codes: user.promo_codes,
+      activated_promo_codes: user.activated_promo_codes,
+      default_attempts: user.default_attempts,
+      maxi_attempts: user.maxi_attempts,
+      onbording_complete: user.onbording_complete,
+      completedLevels: user.completedLevels,
+      attemptsAccrual: formattedAttemptsAccrual,
+    }); 
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Ошибка получения пользователя" });
@@ -77,14 +92,31 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
+        // Определяем тип начисления (MAXI по умолчанию)
+        const attemptType = attempt.type || "MAXI";
+
         const user = await User.findOneAndUpdate(
           { user_token: user_token },
-          { $inc: { maxi_attempts: count } },
+          {
+            $inc: { maxi_attempts: count },
+            $push: {
+              attemptsAccrual: {
+                type: attemptType,
+                count: count,
+                accrualAt: new Date(),
+              },
+            },
+          },
           { new: true }
         );
 
         if (user) {
-          results.push({ user_token, success: true });
+          results.push({
+            user_token,
+            success: true,
+            type: attemptType,
+            count: count,
+          });
         } else {
           errors.push({ user_token, error: "Ошибка обновления пользователя" });
         }

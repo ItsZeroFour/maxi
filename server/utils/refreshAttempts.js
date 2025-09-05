@@ -10,18 +10,31 @@ export const setupDailyReset = () => {
           `[${new Date().toISOString()}] Starting daily reset (default_attempts)...`
         );
 
-        const result = await User.updateMany({}, [
-          {
-            $set: {
-              default_attempts: 2,
-            },
-          },
-        ]);
+        // Получаем всех пользователей, которым нужно сбросить попытки
+        const users = await User.find({});
 
-        console.log(
-          `Daily reset completed. Affected users: ${result.modifiedCount}\n` +
-            `- default_attempts сброшен до 2`
-        );
+        for (const user of users) {
+          const currentDefaultAttempts = user.default_attempts;
+          const resetAmount = 2 - currentDefaultAttempts;
+
+          if (resetAmount > 0) {
+            await User.findOneAndUpdate(
+              { user_token: user.user_token },
+              {
+                $set: { default_attempts: 2 },
+                $push: {
+                  attemptsAccrual: {
+                    type: "DEFAULT",
+                    count: resetAmount,
+                    accrualAt: new Date(),
+                  },
+                },
+              }
+            );
+          }
+        }
+
+        console.log(`Daily reset completed. Users processed: ${users.length}`);
       } catch (error) {
         console.error("Daily reset error:", error);
       }

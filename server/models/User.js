@@ -30,6 +30,24 @@ const User = new mongoose.Schema({
       timestamp: { type: Date, default: Date.now },
     },
   ],
+
+  attemptsAccrual: [
+    {
+      type: {
+        type: String,
+        enum: ["MAXI", "DEFAULT"],
+        required: true,
+      },
+      count: {
+        type: Number,
+        required: true,
+      },
+      accrualAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
 });
 
 export default mongoose.model("User", User);
