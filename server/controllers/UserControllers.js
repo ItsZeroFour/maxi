@@ -47,11 +47,16 @@ export const userGet = async (req, res) => {
       .slice()
       .sort((a, b) => new Date(b.accrualAt) - new Date(a.accrualAt));
 
-    const formattedAttemptsAccrual = sortedAttemptsAccrual.map((accrual) => ({
-      type: accrual.type,
-      count: accrual.count,
-      accrualAt: accrual.accrualAt.toISOString().slice(0, 19),
-    }));
+    const formattedAttemptsAccrual = sortedAttemptsAccrual.map((accrual) => {
+      const date = new Date(accrual.accrualAt);
+      const moscowTime = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+
+      return {
+        type: accrual.type,
+        count: accrual.count,
+        accrualAt: moscowTime.toISOString().slice(0, 19),
+      };
+    });
 
     return res.status(200).json({
       user_token: user.user_token,
