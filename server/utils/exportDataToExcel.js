@@ -42,6 +42,7 @@ async function ensureMetricsColumn(sheets) {
   const metrics = [
     ["Метрика"],
     ["Всего юзеров в базе"],
+    ["Прошли онбординг"],
     ["Неизрасходованно бонусных попыток"],
   ];
   for (let i = 1; i <= MAX_LEVEL; i++) {
@@ -115,6 +116,7 @@ async function getStats() {
       $project: {
         len: { $size: { $ifNull: ["$completedLevels", []] } },
         maxi_attempts: { $ifNull: ["$maxi_attempts", 0] },
+        onbording_complete: { $ifNull: ["$onbording_complete", false] },
       },
     },
     {
@@ -122,6 +124,7 @@ async function getStats() {
         _id: "$len",
         c: { $sum: 1 },
         totalBonusAttempts: { $sum: "$maxi_attempts" },
+        onboardingCompleted: { $sum: { $cond: ["$onbording_complete", 1, 0] } },
       },
     },
   ]);
@@ -131,15 +134,27 @@ async function getStats() {
     (acc, g) => acc + g.totalBonusAttempts,
     0
   );
+  const totalOnboardingCompleted = groups.reduce(
+    (acc, g) => acc + g.onboardingCompleted,
+    0
+  );
 
   const byLen = new Map(
     groups.map((g) => [
       g._id,
-      { count: g.c, bonusAttempts: g.totalBonusAttempts },
+      {
+        count: g.c,
+        bonusAttempts: g.totalBonusAttempts,
+        onboardingCompleted: g.onboardingCompleted,
+      },
     ])
   );
 
-  const result = { totalUsers, totalBonusAttempts };
+  const result = {
+    totalUsers,
+    totalBonusAttempts,
+    totalOnboardingCompleted,
+  };
   for (let i = 1; i <= MAX_LEVEL; i++) {
     let sum = 0;
     for (const [len, data] of byLen) {
@@ -153,13 +168,17 @@ async function getStats() {
 async function writeStatsToColumn(sheets, colNum, stats) {
   const colLetter = toColumnName(colNum);
 
-  const values = [[stats.totalUsers], [stats.totalBonusAttempts]];
+  const values = [
+    [stats.totalUsers],
+    [stats.totalOnboardingCompleted],
+    [stats.totalBonusAttempts],
+  ];
   for (let i = 1; i <= MAX_LEVEL; i++) {
     values.push([stats[i]]);
   }
 
   const startRow = 2;
-  const endRow = 1 + 2 + MAX_LEVEL;
+  const endRow = 1 + 3 + MAX_LEVEL;
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
