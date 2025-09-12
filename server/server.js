@@ -16,6 +16,7 @@ import userRoutes from "./routes/UserRoutes.js";
 import AttemptsRoutes from "./routes/AttemptsRoutes.js";
 import { setupDailyReset } from "./utils/refreshAttempts.js";
 import { exportDailyStatsOnce } from "./utils/exportDataToExcel.js";
+import { sendUsersLevels } from "./utils/sendUserData.js";
 
 dotenv.config({ path: "./.env" });
 const app = express();
@@ -94,13 +95,22 @@ async function start() {
             try {
               await exportDailyStatsOnce();
             } catch (e) {
-              console.error("❌ Ошибка экспорта статистики:", e?.message || e);
+              console.error("Ошибка экспорта статистики:", e?.message || e);
             }
           },
           {
             timezone: "Europe/Moscow",
           }
         );
+
+        cron.schedule("0 0 * * *", async () => {
+          try {
+            await sendUsersLevels();
+            console.log("[CRON] Задача на отправку уровней запущена");
+          } catch (err) {
+            console.error(`Ошибка отправки: ${err}`);
+          }
+        });
       })
       .catch((err) => console.log(err));
 
