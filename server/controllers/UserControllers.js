@@ -6,6 +6,13 @@ import fs from "fs";
 
 dotenv.config();
 
+const BOOSTER_TYPES = [
+  "impulse_line4_horizont",
+  "impulse_line4_vertical",
+  "vspyshka_line5",
+  "prizma_gt",
+];
+
 export const userAuthorization = async (req, res) => {
   try {
     const userToken = req.body.user_token;
@@ -67,6 +74,7 @@ export const userGet = async (req, res) => {
       onbording_complete: user.onbording_complete,
       completedLevels: user.completedLevels,
       attemptsAccrual: formattedAttemptsAccrual,
+      boosters: user.boosters,
     });
   } catch (err) {
     console.log(err);
@@ -116,7 +124,7 @@ export const addAttempts = async (req, res) => {
               },
             },
           },
-          { new: true }
+          { new: true },
         );
 
         if (user) {
@@ -215,7 +223,7 @@ export const levelComplete = async (req, res) => {
             level: levelCount,
           },
         },
-      }
+      },
     );
 
     return res.status(201).json({
@@ -241,7 +249,7 @@ export const completeOnbording = async (req, res) => {
       {
         onbording_complete: true,
       },
-      { new: true }
+      { new: true },
     ).lean();
 
     return res.status(200).json(user);
@@ -280,7 +288,7 @@ export const activatePromocode = async (req, res) => {
 
     if (!user || !user.promo_codes.includes(promocode)) {
       console.error(
-        `[activatePromocode] Промокод не найден у пользователя: user_token=${token}, promocode=${promocode}`
+        `[activatePromocode] Промокод не найден у пользователя: user_token=${token}, promocode=${promocode}`,
       );
       return res.status(404).json({
         message: "Не удалось найти промокод в полученных",
@@ -293,7 +301,7 @@ export const activatePromocode = async (req, res) => {
           if (error) {
             console.error(
               `[activatePromocode] Ошибка подключения к ActiveMQ:`,
-              error.stack || error
+              error.stack || error,
             );
             return reject(error);
           }
@@ -301,7 +309,7 @@ export const activatePromocode = async (req, res) => {
           client.on("error", (err) => {
             console.error(
               `[activatePromocode] Ошибка соединения ActiveMQ:`,
-              err.stack || err
+              err.stack || err,
             );
             reject(err);
           });
@@ -319,7 +327,7 @@ export const activatePromocode = async (req, res) => {
           frame.on("error", (frameError) => {
             console.error(
               `[activatePromocode] Ошибка отправки frame:`,
-              frameError.stack || frameError
+              frameError.stack || frameError,
             );
             client.disconnect(() => {});
             reject(frameError);
@@ -342,7 +350,7 @@ export const activatePromocode = async (req, res) => {
 
       await User.findOneAndUpdate(
         { user_token: token },
-        { $push: { activated_promo_codes: promocode } }
+        { $push: { activated_promo_codes: promocode } },
       );
 
       return res.status(200).json({
@@ -353,7 +361,7 @@ export const activatePromocode = async (req, res) => {
     } catch (err) {
       console.error(
         `[activatePromocode] Ошибка при отправке в stomp   или обновлении базы:`,
-        err.stack || err
+        err.stack || err,
       );
       return res.status(500).json({
         message: "Не удалось активировать промокод",
@@ -364,5 +372,100 @@ export const activatePromocode = async (req, res) => {
     res.status(500).json({
       message: "Не удалось активировать промокод",
     });
+  }
+};
+
+export const addBoosters = async (req, res) => {
+  try {
+    const user_token = req.user_token;
+    const { boosters } = req.body;
+
+    if (!boosters || !Array.isArray(boosters) || boosters.length === 0) {
+      return res.status(400).json({ error: "Неверный формат запроса" });
+    }
+
+    const incFields = {};
+    const accrualEntries = [];
+
+    for (const b of boosters) {
+      if (!BOOSTER_TYPES.includes(b.type) || typeof b.count !== "number") {
+        return res
+          .status(400)
+          .json({ error: `Неверный тип или количество бустера: ${b.type}` });
+      }
+
+      incFields[`boosters.${b.type}`] =
+        (incFields[`boosters.${b.type}`] || 0) + b.count;
+
+      accrualEntries.push({
+        type: b.type,
+        count: b.count,
+        accrualAt: new Date(),
+      });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { user_token },
+      {
+        $inc: incFields,
+        $push: { boostersAccrual: { $each: accrualEntries } },
+      },
+      { new: true },
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    return res.status(200).json({ success: true, boosters: user.boosters });
+  } catch (err) {
+    console.log(err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при начислении бустеров" });
+  }
+};
+
+export const useBooster = async (req, res) => {
+  try {
+    const user_token = req.user_token;
+    const { type, count } = req.body;
+
+    if (
+      !BOOSTER_TYPES.includes(type) ||
+      typeof count !== "number" ||
+      count <= 0
+    ) {
+      return res.status(400).json({ error: "Неверный формат запроса" });
+    }
+
+    const user = await User.findOne({ user_token });
+
+    if (!user) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    if ((user.boosters[type] || 0) < count) {
+      return res.status(400).json({
+        success: false,
+        message: "Недостаточно бустеров",
+        boosters: user.boosters,
+      });
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { user_token },
+      { $inc: { [`boosters.${type}`]: -count } },
+      { new: true },
+    );
+
+    return res
+      .status(200)
+      .json({ success: true, boosters: updatedUser.boosters });
+  } catch (err) {
+    console.log(err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при списании бустера" });
   }
 };
