@@ -198,6 +198,18 @@ export const levelStart = async (req, res) => {
   }
 };
 
+const levelRewards = {};
+
+for (let level = 1; level <= 30; level++) {
+  const boosterIndex = (level - 1) % BOOSTER_TYPES.length;
+
+  levelRewards[level] = {
+    type: "booster",
+    booster: BOOSTER_TYPES[boosterIndex],
+    count: 1,
+  };
+}
+
 export const levelComplete = async (req, res) => {
   try {
     const levelCount = req.params.level;
@@ -205,10 +217,42 @@ export const levelComplete = async (req, res) => {
 
     const user = await User.findOne({ user_token: token });
 
+    const reward = levelRewards[levelCount] || { type: "promocode" };
+
+    if (reward.type === "booster") {
+      const updated = await User.findOneAndUpdate(
+        { user_token: token },
+        {
+          $inc: { [`boosters.${reward.booster}`]: reward.count },
+          $push: {
+            completedLevels: { level: levelCount },
+            boostersAccrual: {
+              type: reward.booster,
+              count: reward.count,
+              accrualAt: new Date(),
+            },
+          },
+        },
+        { new: true },
+      );
+
+      return res.status(201).json({
+        message: "Бустер получен",
+        is_promocode_get: false,
+        is_booster_get: true,
+        booster_type: reward.booster,
+        booster_count: reward.count,
+        promocode: "",
+        token,
+      });
+    }
+
+    // старая логика с промокодом
     if (user.promo_codes.includes(promocodes[+levelCount - 1])) {
       return res.status(201).json({
         message: "Промокод уже получен",
         is_promocode_get: false,
+        is_booster_get: false,
         promocode: "",
         token,
       });
@@ -219,9 +263,7 @@ export const levelComplete = async (req, res) => {
       {
         $push: {
           promo_codes: promocodes[+levelCount - 1],
-          completedLevels: {
-            level: levelCount,
-          },
+          completedLevels: { level: levelCount },
         },
       },
     );
@@ -229,6 +271,7 @@ export const levelComplete = async (req, res) => {
     return res.status(201).json({
       message: "Промокод получен",
       is_promocode_get: true,
+      is_booster_get: false,
       promocode: promocodes[+levelCount - 1],
       token,
     });
