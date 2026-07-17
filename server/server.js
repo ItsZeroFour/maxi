@@ -18,6 +18,8 @@ import { setupDailyReset } from "./utils/refreshAttempts.js";
 import { exportDailyStatsOnce } from "./utils/exportDataToExcel.js";
 import { sendUsersLevels } from "./utils/sendUserData.js";
 
+import AdminRoutes from "./routes/AdminRoutes.js";
+
 dotenv.config({ path: "./.env" });
 const app = express();
 
@@ -40,7 +42,7 @@ app.use(
     limit: "20mb",
     extended: true,
     parameterLimit: 1000000,
-  })
+  }),
 );
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -79,6 +81,7 @@ app.post("/upload", upload.single("image"), (req, res) => {
 /* ROUTES */
 app.use("/user", userRoutes);
 app.use("/", AttemptsRoutes);
+app.use("/admin", AdminRoutes);
 
 /* START FUNCTION */
 async function start() {
@@ -100,7 +103,7 @@ async function start() {
           },
           {
             timezone: "Europe/Moscow",
-          }
+          },
         );
 
         cron.schedule("0 0 * * *", async () => {

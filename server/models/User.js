@@ -90,6 +90,6 @@ const User = new mongoose.Schema({
       },
     },
   ],
-});
+}, { timestamps: true });
 
 export default mongoose.model("User", User);
