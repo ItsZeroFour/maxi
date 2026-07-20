@@ -4,6 +4,7 @@ import {
   adminLogin,
   getUsers,
   getUserDetails,
+  getUserLogs,
   getLevelsStats,
   getPromocodesStats,
   getOverview,
@@ -16,6 +17,7 @@ router.post("/login", adminLogin);
 
 router.get("/users", checkAdminToken, getUsers);
 router.get("/users/:token", checkAdminToken, getUserDetails);
+router.get("/users/:token/logs", checkAdminToken, getUserLogs);
 router.get("/stats/levels", checkAdminToken, getLevelsStats);
 router.get("/stats/promocodes", checkAdminToken, getPromocodesStats);
 router.get("/stats/overview", checkAdminToken, getOverview);

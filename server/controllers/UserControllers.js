@@ -264,6 +264,10 @@ export const levelComplete = async (req, res) => {
         $push: {
           promo_codes: promocodes[+levelCount - 1],
           completedLevels: { level: levelCount },
+          promoCodesLog: {
+            code: promocodes[+levelCount - 1],
+            receivedAt: new Date(),
+          },
         },
       },
     );
@@ -393,7 +397,15 @@ export const activatePromocode = async (req, res) => {
 
       await User.findOneAndUpdate(
         { user_token: token },
-        { $push: { activated_promo_codes: promocode } },
+        {
+          $push: {
+            activated_promo_codes: promocode,
+            activatedPromoCodesLog: {
+              code: promocode,
+              activatedAt: new Date(),
+            },
+          },
+        },
       );
 
       return res.status(200).json({

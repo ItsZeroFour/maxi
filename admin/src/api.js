@@ -44,6 +44,9 @@ export const api = {
   getUserDetails: (token) =>
     request(`/admin/users/${encodeURIComponent(token)}`),
 
+  getUserLogs: (token) =>
+    request(`/admin/users/${encodeURIComponent(token)}/logs`),
+
   getLevelsStats: () => request("/admin/stats/levels"),
 
   getPromocodesStats: () => request("/admin/stats/promocodes"),

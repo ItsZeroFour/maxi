@@ -9,6 +9,20 @@ const User = new mongoose.Schema({
   promo_codes: [String],
   activated_promo_codes: [String],
 
+  promoCodesLog: [
+    {
+      code: { type: String, required: true },
+      receivedAt: { type: Date, default: Date.now },
+    },
+  ],
+
+  activatedPromoCodesLog: [
+    {
+      code: { type: String, required: true },
+      activatedAt: { type: Date, default: Date.now },
+    },
+  ],
+
   default_attempts: {
     type: Number,
     default: 2,

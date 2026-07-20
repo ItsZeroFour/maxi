@@ -98,6 +98,112 @@ export const getUserDetails = async (req, res) => {
   }
 };
 
+export const getUserLogs = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const user = await User.findOne({ user_token: token }).lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    const events = [];
+
+    (user.completedLevels || []).forEach((item) => {
+      events.push({
+        type: "level_complete",
+        date: item.timestamp,
+        payload: { level: item.level },
+      });
+    });
+
+    (user.attemptsAccrual || []).forEach((item) => {
+      events.push({
+        type: "attempts_accrual",
+        date: item.accrualAt,
+        payload: { attemptType: item.type, count: item.count },
+      });
+    });
+
+    (user.boostersAccrual || []).forEach((item) => {
+      events.push({
+        type: "booster_accrual",
+        date: item.accrualAt,
+        payload: { boosterType: item.type, count: item.count },
+      });
+    });
+
+    (user.promoCodesLog || []).forEach((item) => {
+      events.push({
+        type: "promocode_received",
+        date: item.receivedAt,
+        payload: { code: item.code },
+      });
+    });
+
+    (user.activatedPromoCodesLog || []).forEach((item) => {
+      events.push({
+        type: "promocode_activated",
+        date: item.activatedAt,
+        payload: { code: item.code },
+      });
+    });
+
+    // Промокоды, полученные/активированные до появления *Log-полей,
+    // у них нет точной даты — помечаем отдельно, чтобы не терять сам факт события.
+    const loggedReceivedCodes = new Set(
+      (user.promoCodesLog || []).map((i) => i.code),
+    );
+    const loggedActivatedCodes = new Set(
+      (user.activatedPromoCodesLog || []).map((i) => i.code),
+    );
+
+    (user.promo_codes || [])
+      .filter((code) => !loggedReceivedCodes.has(code))
+      .forEach((code) => {
+        events.push({
+          type: "promocode_received",
+          date: null,
+          payload: { code, dateUnknown: true },
+        });
+      });
+
+    (user.activated_promo_codes || [])
+      .filter((code) => !loggedActivatedCodes.has(code))
+      .forEach((code) => {
+        events.push({
+          type: "promocode_activated",
+          date: null,
+          payload: { code, dateUnknown: true },
+        });
+      });
+
+    events.push({
+      type: "registered",
+      date: user.createdAt,
+      payload: {},
+    });
+
+    events.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    return res.status(200).json({
+      user_token: user.user_token,
+      events,
+    });
+  } catch (err) {
+    console.log(err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка получения истории пользователя" });
+  }
+};
+
 export const getLevelsStats = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();

@@ -427,12 +427,134 @@ function EditUserModal({ user, onClose, onSaved }) {
   );
 }
 
+const EVENT_META = {
+  registered: { label: "Регистрация в игре", icon: "👤", color: "#8a92a6" },
+  level_complete: { label: "Уровень пройден", icon: "🏁", color: "#5eead4" },
+  attempts_accrual: {
+    label: "Начислены попытки",
+    icon: "🎟️",
+    color: "#f5a623",
+  },
+  booster_accrual: { label: "Получен бустер", icon: "⚡", color: "#a78bfa" },
+  promocode_received: {
+    label: "Получен промокод",
+    icon: "🎁",
+    color: "#f5a623",
+  },
+  promocode_activated: {
+    label: "Активирован промокод",
+    icon: "✅",
+    color: "#5eead4",
+  },
+};
+
+function formatEventDate(date) {
+  if (!date) return "Дата неизвестна";
+  return new Date(date).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function eventDescription(event) {
+  const p = event.payload || {};
+  switch (event.type) {
+    case "registered":
+      return "Пользователь впервые авторизовался в игре";
+    case "level_complete":
+      return `Пройден уровень №${p.level}`;
+    case "attempts_accrual":
+      return `+${p.count} попыток (${p.attemptType === "MAXI" ? "MAXI" : "обычные"})`;
+    case "booster_accrual":
+      return `+${p.count} × ${BOOSTER_LABELS[p.boosterType] || p.boosterType}`;
+    case "promocode_received":
+      return `Промокод: ${p.code}`;
+    case "promocode_activated":
+      return `Промокод: ${p.code}`;
+    default:
+      return "";
+  }
+}
+
+function UserLogsModal({ user, onClose }) {
+  const [events, setEvents] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .getUserLogs(user.user_token)
+      .then((res) => setEvents(res.events))
+      .catch((e) => setError(e.message));
+  }, [user.user_token]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-card modal-card-wide"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>История: {user.user_token}</h3>
+
+        {error && <div className="error-box">{error}</div>}
+        {!events && !error && <div className="loading">Загрузка…</div>}
+
+        {events && events.length === 0 && (
+          <div className="loading">Событий пока нет</div>
+        )}
+
+        {events && events.length > 0 && (
+          <div className="timeline">
+            {events.map((event, idx) => {
+              const meta = EVENT_META[event.type] || {
+                label: event.type,
+                icon: "•",
+                color: "#8a92a6",
+              };
+              return (
+                <div className="timeline-item" key={idx}>
+                  <div
+                    className="timeline-dot"
+                    style={{ borderColor: meta.color, color: meta.color }}
+                  >
+                    {meta.icon}
+                  </div>
+                  <div className="timeline-content">
+                    <div className="timeline-header">
+                      <span className="timeline-label">{meta.label}</span>
+                      <span className="timeline-date">
+                        {formatEventDate(event.date)}
+                      </span>
+                    </div>
+                    <div className="timeline-desc">
+                      {eventDescription(event)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UsersTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [editingUser, setEditingUser] = useState(null);
+  const [logsUser, setLogsUser] = useState(null);
 
   const load = () => {
     api
@@ -479,7 +601,11 @@ function UsersTab() {
               </thead>
               <tbody>
                 {data.users.map((u) => (
-                  <tr key={u.user_token}>
+                  <tr
+                    key={u.user_token}
+                    className="clickable-row"
+                    onClick={() => setLogsUser(u)}
+                  >
                     <td className="mono">{u.user_token}</td>
                     <td>
                       {u.default_attempts} / {u.maxi_attempts}
@@ -506,7 +632,16 @@ function UsersTab() {
                         ? new Date(u.createdAt).toLocaleDateString("ru-RU")
                         : "—"}
                     </td>
-                    <td>
+                    <td
+                      className="actions-cell"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        className="edit-btn"
+                        onClick={() => setLogsUser(u)}
+                      >
+                        Логи
+                      </button>
                       <button
                         className="edit-btn"
                         onClick={() => setEditingUser(u)}
@@ -539,6 +674,10 @@ function UsersTab() {
           </>
         )}
       </div>
+
+      {logsUser && (
+        <UserLogsModal user={logsUser} onClose={() => setLogsUser(null)} />
+      )}
 
       {editingUser && (
         <EditUserModal
