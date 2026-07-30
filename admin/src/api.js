@@ -29,6 +29,45 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function downloadFile(path, fallbackFilename) {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: {
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+    },
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("admin_token");
+    window.location.reload();
+    throw new Error("Не авторизован");
+  }
+
+  if (!res.ok) {
+    let message = "Ошибка запроса";
+    try {
+      const data = await res.json();
+      message = data.message || message;
+    } catch {
+      // ignore, response wasn't JSON
+    }
+    throw new Error(message);
+  }
+
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : fallbackFilename;
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export const api = {
   login: (login, password) =>
     request("/admin/login", {
@@ -58,4 +97,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+
+  exportUsersCsv: () =>
+    downloadFile("/admin/users/export/csv", "users.csv"),
 };

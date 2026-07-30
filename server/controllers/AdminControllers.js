@@ -81,6 +81,67 @@ export const getUsers = async (req, res) => {
   }
 };
 
+const CSV_COLUMNS = [
+  { key: "user_token", header: "Токен" },
+  { key: "default_attempts", header: "Жизни (default)" },
+  { key: "maxi_attempts", header: "Жизни (maxi)" },
+  { key: "impulse_line4_horizont", header: "Бустер: импульс гориз." },
+  { key: "impulse_line4_vertical", header: "Бустер: импульс верт." },
+  { key: "vspyshka_line5", header: "Бустер: вспышка" },
+  { key: "prizma_gt", header: "Бустер: призма" },
+  { key: "completed_levels_count", header: "Уровней пройдено" },
+  { key: "promo_codes_count", header: "Промокодов получено" },
+  { key: "activated_promo_codes_count", header: "Промокодов активировано" },
+  { key: "onbording_complete", header: "Онбординг пройден" },
+  { key: "createdAt", header: "Дата регистрации" },
+];
+
+function csvEscape(value) {
+  const str = value === undefined || value === null ? "" : String(value);
+  if (/[",;\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export const exportUsersCsv = async (req, res) => {
+  try {
+    const users = await User.find({}).sort({ createdAt: -1 }).lean();
+
+    const rows = users.map((u) => {
+      const row = {
+        user_token: u.user_token,
+        default_attempts: u.default_attempts ?? 0,
+        maxi_attempts: u.maxi_attempts ?? 0,
+        impulse_line4_horizont: u.boosters?.impulse_line4_horizont ?? 0,
+        impulse_line4_vertical: u.boosters?.impulse_line4_vertical ?? 0,
+        vspyshka_line5: u.boosters?.vspyshka_line5 ?? 0,
+        prizma_gt: u.boosters?.prizma_gt ?? 0,
+        completed_levels_count: u.completedLevels?.length || 0,
+        promo_codes_count: u.promo_codes?.length || 0,
+        activated_promo_codes_count: u.activated_promo_codes?.length || 0,
+        onbording_complete: u.onbording_complete ? "да" : "нет",
+        createdAt: u.createdAt
+          ? new Date(u.createdAt).toLocaleString("ru-RU")
+          : "",
+      };
+      return CSV_COLUMNS.map((c) => csvEscape(row[c.key])).join(";");
+    });
+
+    const header = CSV_COLUMNS.map((c) => csvEscape(c.header)).join(";");
+    const csv = "\uFEFF" + [header, ...rows].join("\r\n");
+
+    const filename = `users_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ message: "Ошибка экспорта в CSV" });
+  }
+};
+
 export const getUserDetails = async (req, res) => {
   try {
     const { token } = req.params;

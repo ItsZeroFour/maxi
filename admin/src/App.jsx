@@ -555,6 +555,8 @@ function UsersTab() {
   const [search, setSearch] = useState("");
   const [editingUser, setEditingUser] = useState(null);
   const [logsUser, setLogsUser] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const load = () => {
     api
@@ -564,6 +566,15 @@ function UsersTab() {
   };
 
   useEffect(load, [page, search]);
+
+  const handleExport = () => {
+    setExporting(true);
+    setExportError("");
+    api
+      .exportUsersCsv()
+      .catch((e) => setExportError(e.message))
+      .finally(() => setExporting(false));
+  };
 
   return (
     <div className="tab-content">
@@ -579,8 +590,16 @@ function UsersTab() {
             }}
           />
           {data && <span className="table-total">Всего: {data.total}</span>}
+          <button
+            className="edit-btn"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? "Экспорт…" : "Экспорт в CSV"}
+          </button>
         </div>
 
+        {exportError && <div className="error-box">{exportError}</div>}
         {error && <div className="error-box">{error}</div>}
         {!data && !error && <div className="loading">Загрузка…</div>}
 
