@@ -45,11 +45,21 @@ const User = new mongoose.Schema({
     },
   ],
 
+  lastVisitAt: {
+    type: Date,
+    default: null,
+  },
+
+  visitStreak: {
+    type: Number,
+    default: 0,
+  },
+
   attemptsAccrual: [
     {
       type: {
         type: String,
-        enum: ["MAXI", "DEFAULT"],
+        enum: ["MAXI", "DEFAULT", "STREAK"],
         required: true,
       },
       count: {
