@@ -322,6 +322,319 @@ function PromocodesTab() {
   );
 }
 
+// ==================== КВИЗ ====================
+
+const EMPTY_ANSWER = () => ({ text: "", isCorrect: false });
+
+function QuizQuestionModal({ question, onClose, onSaved }) {
+  const isEdit = !!question;
+
+  const [form, setForm] = useState(() => ({
+    question: question?.question || "",
+    order: question?.order ?? 0,
+    isActive: question?.isActive ?? true,
+    answers:
+      question?.answers?.length > 0
+        ? question.answers.map((a) => ({
+            id: a.id || a._id,
+            text: a.text,
+            isCorrect: a.isCorrect,
+          }))
+        : [EMPTY_ANSWER(), EMPTY_ANSWER()],
+  }));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const updateAnswer = (idx, patch) => {
+    setForm((f) => ({
+      ...f,
+      answers: f.answers.map((a, i) => (i === idx ? { ...a, ...patch } : a)),
+    }));
+  };
+
+  const setCorrectAnswer = (idx) => {
+    setForm((f) => ({
+      ...f,
+      answers: f.answers.map((a, i) => ({ ...a, isCorrect: i === idx })),
+    }));
+  };
+
+  const addAnswer = () => {
+    setForm((f) => ({ ...f, answers: [...f.answers, EMPTY_ANSWER()] }));
+  };
+
+  const removeAnswer = (idx) => {
+    setForm((f) => ({
+      ...f,
+      answers: f.answers.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const handleSave = async () => {
+    setError("");
+
+    if (!form.question.trim()) {
+      setError("Введите текст вопроса");
+      return;
+    }
+    if (form.answers.length < 2) {
+      setError("Нужно минимум 2 варианта ответа");
+      return;
+    }
+    if (form.answers.some((a) => !a.text.trim())) {
+      setError("Заполните текст у всех вариантов ответа");
+      return;
+    }
+    if (!form.answers.some((a) => a.isCorrect)) {
+      setError("Отметьте правильный вариант ответа");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        question: form.question.trim(),
+        order: Number(form.order) || 0,
+        isActive: form.isActive,
+        answers: form.answers.map((a) => ({
+          text: a.text.trim(),
+          isCorrect: a.isCorrect,
+        })),
+      };
+
+      if (isEdit) {
+        await api.updateQuizQuestion(question.id || question._id, payload);
+      } else {
+        await api.createQuizQuestion(payload);
+      }
+
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-card modal-card-wide"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>{isEdit ? "Редактирование вопроса" : "Новый вопрос квиза"}</h3>
+
+        <label className="quiz-field">
+          Текст вопроса
+          <textarea
+            className="quiz-textarea"
+            rows={2}
+            value={form.question}
+            onChange={(e) => setForm({ ...form, question: e.target.value })}
+          />
+        </label>
+
+        <div className="modal-section-title">
+          Варианты ответа (отметьте правильный)
+        </div>
+
+        <div className="quiz-answers-list">
+          {form.answers.map((a, idx) => (
+            <div className="quiz-answer-row" key={idx}>
+              <input
+                type="radio"
+                name="correct-answer"
+                checked={a.isCorrect}
+                onChange={() => setCorrectAnswer(idx)}
+                title="Правильный ответ"
+              />
+              <input
+                type="text"
+                className="quiz-answer-input"
+                placeholder={`Вариант ${idx + 1}`}
+                value={a.text}
+                onChange={(e) => updateAnswer(idx, { text: e.target.value })}
+              />
+              <button
+                type="button"
+                className="quiz-remove-btn"
+                onClick={() => removeAnswer(idx)}
+                disabled={form.answers.length <= 2}
+                title="Удалить вариант"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button type="button" className="quiz-add-btn" onClick={addAnswer}>
+          + Добавить вариант
+        </button>
+
+        <div className="modal-row" style={{ marginTop: 16 }}>
+          <label>
+            Порядок показа
+            <input
+              type="number"
+              value={form.order}
+              onChange={(e) => setForm({ ...form, order: e.target.value })}
+            />
+          </label>
+        </div>
+
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.isActive}
+            onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+          />
+          Вопрос активен (показывается в квизе)
+        </label>
+
+        {error && <div className="login-error">{error}</div>}
+
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>
+            Отмена
+          </button>
+          <button
+            className="btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuizTab() {
+  const [questions, setQuestions] = useState(null);
+  const [error, setError] = useState("");
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const load = () => {
+    api
+      .getQuizQuestions()
+      .then((res) => setQuestions(res.questions))
+      .catch((e) => setError(e.message));
+  };
+
+  useEffect(load, []);
+
+  const handleDelete = async (question) => {
+    const id = question.id || question._id;
+    if (!window.confirm("Удалить этот вопрос квиза?")) return;
+
+    setDeletingId(id);
+    try {
+      await api.deleteQuizQuestion(id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="tab-content">
+      <div className="panel">
+        <div className="table-toolbar">
+          <span className="table-total">
+            Пользователь проходит квиз, когда у него закончились попытки.
+            Правильные ответы на все вопросы начисляют +1 попытку (раз в день).
+          </span>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            + Добавить вопрос
+          </button>
+        </div>
+
+        {error && <div className="error-box">{error}</div>}
+        {!questions && !error && <div className="loading">Загрузка…</div>}
+
+        {questions && questions.length === 0 && (
+          <div className="loading">
+            Вопросов пока нет — добавьте первый, чтобы квиз заработал.
+          </div>
+        )}
+
+        {questions && questions.length > 0 && (
+          <div className="quiz-question-list">
+            {questions.map((q) => {
+              const id = q.id || q._id;
+              return (
+                <div className="quiz-question-card" key={id}>
+                  <div className="quiz-question-card-header">
+                    <span
+                      className={`quiz-status-badge ${
+                        q.isActive ? "active" : "inactive"
+                      }`}
+                    >
+                      {q.isActive ? "Активен" : "Отключён"}
+                    </span>
+                    <span className="table-total">Порядок: {q.order}</span>
+                  </div>
+
+                  <div className="quiz-question-text">{q.question}</div>
+
+                  <ul className="quiz-answer-preview-list">
+                    {q.answers.map((a) => (
+                      <li
+                        key={a.id || a._id}
+                        className={a.isCorrect ? "correct" : ""}
+                      >
+                        {a.isCorrect ? "✓ " : "— "}
+                        {a.text}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="actions-cell">
+                    <button
+                      className="edit-btn"
+                      onClick={() => setEditingQuestion(q)}
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      className="edit-btn"
+                      onClick={() => handleDelete(q)}
+                      disabled={deletingId === id}
+                    >
+                      {deletingId === id ? "Удаляем…" : "Удалить"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {(creating || editingQuestion) && (
+        <QuizQuestionModal
+          question={editingQuestion}
+          onClose={() => {
+            setCreating(false);
+            setEditingQuestion(null);
+          }}
+          onSaved={() => {
+            setCreating(false);
+            setEditingQuestion(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ==================== ПОЛЬЗОВАТЕЛИ ====================
 
 function EditUserModal({ user, onClose, onSaved }) {
@@ -717,6 +1030,7 @@ const TABS = [
   { id: "users", label: "Пользователи" },
   { id: "levels", label: "Уровни" },
   { id: "promocodes", label: "Промокоды" },
+  { id: "quiz", label: "Квиз" },
 ];
 
 export default function App() {
@@ -759,6 +1073,7 @@ export default function App() {
         {tab === "users" && <UsersTab />}
         {tab === "levels" && <LevelsTab />}
         {tab === "promocodes" && <PromocodesTab />}
+        {tab === "quiz" && <QuizTab />}
       </main>
     </div>
   );

@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
 import stompit from "stompit";
 import fs from "fs";
+import { getMoscowDateString } from "../utils/moscowDate.js";
 
 dotenv.config();
 
@@ -12,11 +13,6 @@ const BOOSTER_TYPES = [
   "vspyshka_line5",
   "prizma_gt",
 ];
-
-const getMoscowDateString = (date = new Date()) => {
-  const moscowDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
-  return moscowDate.toISOString().slice(0, 10);
-};
 
 export const userAuthorization = async (req, res) => {
   try {
@@ -30,7 +26,6 @@ export const userAuthorization = async (req, res) => {
 
     let user = await User.findOne({ user_token: userToken });
 
-    // Новый пользователь — просто фиксируем первый визит
     if (!user) {
       user = await new User({
         user_token: userToken,
@@ -38,34 +33,30 @@ export const userAuthorization = async (req, res) => {
         visitStreak: 1,
       }).save();
 
-      return res.status(200).json({ ...user._doc });
+      return res.status(200).json({ ...user._doc, showComebackModal: false });
     }
 
-    // --- Логика ежедневного стрика заходов ---
     const todayStr = getMoscowDateString();
     const lastVisitStr = user.lastVisitAt
       ? getMoscowDateString(user.lastVisitAt)
       : null;
 
-    // Если пользователь уже заходил сегодня — ничего не пересчитываем
+    let bonusLife = false;
+
     if (lastVisitStr !== todayStr) {
       const yesterdayStr = getMoscowDateString(
         new Date(Date.now() - 24 * 60 * 60 * 1000),
       );
 
       let newStreak;
-      let bonusLife = false;
 
       if (lastVisitStr === yesterdayStr) {
-        // Заход идёт следующим днём после предыдущего — стрик продолжается
         newStreak = user.visitStreak + 1;
 
         if (newStreak >= 2) {
-          // Со 2-го дня подряд и далее начисляем бонусную жизнь
           bonusLife = true;
         }
       } else {
-        // Разрыв в днях (пропустил день или первый заход за долгое время)
         newStreak = 1;
       }
 
@@ -91,7 +82,9 @@ export const userAuthorization = async (req, res) => {
       );
     }
 
-    return res.status(200).json({ ...user._doc });
+    return res
+      .status(200)
+      .json({ ...user._doc, showComebackModal: bonusLife });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Ошибка сервера при авторизации" });

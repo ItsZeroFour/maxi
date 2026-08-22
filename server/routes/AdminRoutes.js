@@ -11,6 +11,12 @@ import {
   updateUser,
   exportUsersCsv,
 } from "../controllers/AdminControllers.js";
+import {
+  getQuizQuestionsAdmin,
+  createQuizQuestion,
+  updateQuizQuestion,
+  deleteQuizQuestion,
+} from "../controllers/AdminQuizControllers.js";
 
 const router = Router();
 
@@ -24,5 +30,10 @@ router.get("/stats/levels", checkAdminToken, getLevelsStats);
 router.get("/stats/promocodes", checkAdminToken, getPromocodesStats);
 router.get("/stats/overview", checkAdminToken, getOverview);
 router.put("/users/:token", checkAdminToken, updateUser);
+
+router.get("/quiz", checkAdminToken, getQuizQuestionsAdmin);
+router.post("/quiz", checkAdminToken, createQuizQuestion);
+router.put("/quiz/:id", checkAdminToken, updateQuizQuestion);
+router.delete("/quiz/:id", checkAdminToken, deleteQuizQuestion);
 
 export default router;

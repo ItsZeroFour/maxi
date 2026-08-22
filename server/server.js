@@ -14,6 +14,7 @@ import cron from "node-cron";
 /* ROUTES */
 import userRoutes from "./routes/UserRoutes.js";
 import AttemptsRoutes from "./routes/AttemptsRoutes.js";
+import QuizRoutes from "./routes/QuizRoutes.js";
 import { setupDailyReset } from "./utils/refreshAttempts.js";
 import { exportDailyStatsOnce } from "./utils/exportDataToExcel.js";
 import { sendUsersLevels } from "./utils/sendUserData.js";
@@ -81,6 +82,7 @@ app.post("/upload", upload.single("image"), (req, res) => {
 /* ROUTES */
 app.use("/user", userRoutes);
 app.use("/", AttemptsRoutes);
+app.use("/quiz", QuizRoutes);
 app.use("/admin", AdminRoutes);
 
 /* START FUNCTION */

@@ -98,6 +98,24 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  exportUsersCsv: () =>
-    downloadFile("/admin/users/export/csv", "users.csv"),
+  exportUsersCsv: () => downloadFile("/admin/users/export/csv", "users.csv"),
+
+  getQuizQuestions: () => request("/admin/quiz"),
+
+  createQuizQuestion: (payload) =>
+    request("/admin/quiz", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateQuizQuestion: (id, payload) =>
+    request(`/admin/quiz/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteQuizQuestion: (id) =>
+    request(`/admin/quiz/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 };
