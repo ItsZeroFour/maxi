@@ -331,6 +331,7 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
 
   const [form, setForm] = useState(() => ({
     question: question?.question || "",
+    comment: question?.comment || "",
     order: question?.order ?? 0,
     isActive: question?.isActive ?? true,
     answers:
@@ -394,6 +395,7 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
     try {
       const payload = {
         question: form.question.trim(),
+        comment: form.comment.trim(),
         order: Number(form.order) || 0,
         isActive: form.isActive,
         answers: form.answers.map((a) => ({
@@ -472,6 +474,17 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
           + Добавить вариант
         </button>
 
+        <label className="quiz-field" style={{ marginTop: 16 }}>
+          Комментарий к вопросу
+          <textarea
+            className="quiz-textarea"
+            rows={2}
+            placeholder="Показывается пользователю после того, как он выберет ответ (при любом результате)"
+            value={form.comment}
+            onChange={(e) => setForm({ ...form, comment: e.target.value })}
+          />
+        </label>
+
         <div className="modal-row" style={{ marginTop: 16 }}>
           <label>
             Порядок показа
@@ -547,8 +560,11 @@ function QuizTab() {
       <div className="panel">
         <div className="table-toolbar">
           <span className="table-total">
-            Пользователь проходит квиз, когда у него закончились попытки.
-            Правильные ответы на все вопросы начисляют +1 попытку (раз в день).
+            Пользователю показывается один вопрос из этого списка в день (по
+            порядку, начиная с наименьшего "Порядок"), когда у него закончились
+            попытки. +1 попытка начисляется только за верный ответ, но вне
+            зависимости от результата квиз в этот день становится недоступен.
+            Когда активные вопросы заканчиваются, квиз перестаёт предлагаться.
           </span>
           <button className="btn-primary" onClick={() => setCreating(true)}>
             + Добавить вопрос
@@ -594,6 +610,10 @@ function QuizTab() {
                       </li>
                     ))}
                   </ul>
+
+                  {q.comment && (
+                    <div className="quiz-comment-preview">💬 {q.comment}</div>
+                  )}
 
                   <div className="actions-cell">
                     <button
