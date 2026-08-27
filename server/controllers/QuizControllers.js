@@ -2,6 +2,26 @@ import User from "../models/User.js";
 import QuizQuestion from "../models/QuizQuestion.js";
 import { getMoscowDateString, getNextMoscowMidnightISO } from "../utils/moscowDate.js";
 
+const findNextQuizQuestion = async (user) => {
+  const answeredIds = new Set(
+    (user.quizAnsweredQuestions || []).map((a) => String(a.question)),
+  );
+
+  const questions = await QuizQuestion.find({ isActive: true })
+    .sort({ order: 1, createdAt: 1 })
+    .lean();
+
+  return questions.find((q) => !answeredIds.has(String(q._id))) || null;
+};
+
+const hasAnsweredToday = (user) => {
+  const todayStr = getMoscowDateString();
+  const lastAnsweredStr = user.lastQuizAnsweredAt
+    ? getMoscowDateString(user.lastQuizAnsweredAt)
+    : null;
+  return lastAnsweredStr === todayStr;
+};
+
 export const getQuizStatus = async (req, res) => {
   try {
     const user_token = req.user_token;
@@ -15,21 +35,17 @@ export const getQuizStatus = async (req, res) => {
     const totalAttempts =
       (user.default_attempts || 0) + (user.maxi_attempts || 0);
 
-    const todayStr = getMoscowDateString();
-    const lastRewardStr = user.lastQuizAttemptAt
-      ? getMoscowDateString(user.lastQuizAttemptAt)
-      : null;
-    const alreadyRewardedToday = lastRewardStr === todayStr;
+    let quizAvailable = false;
 
-    const quizAvailable = totalAttempts === 0 && !alreadyRewardedToday;
+    if (totalAttempts === 0 && !hasAnsweredToday(user)) {
+      const nextQuestion = await findNextQuizQuestion(user);
+      quizAvailable = !!nextQuestion;
+    }
 
     return res.status(200).json({
       quizAvailable,
       attemptsLeft: totalAttempts,
-      alreadyRewardedToday,
-      nextQuizAvailableAt: alreadyRewardedToday
-        ? getNextMoscowMidnightISO()
-        : null,
+      nextQuizAvailableAt: quizAvailable ? null : getNextMoscowMidnightISO(),
     });
   } catch (err) {
     console.log(err);
@@ -39,36 +55,55 @@ export const getQuizStatus = async (req, res) => {
   }
 };
 
-export const getQuizQuestions = async (req, res) => {
+export const getQuizQuestion = async (req, res) => {
   try {
-    const questions = await QuizQuestion.find({ isActive: true })
-      .sort({ order: 1, createdAt: 1 })
-      .lean();
+    const user_token = req.user_token;
 
-    const formatted = questions.map((q) => ({
-      id: q._id,
-      question: q.question,
-      answers: (q.answers || []).map((a) => ({
-        id: a._id,
-        text: a.text,
-      })),
-    }));
+    const user = await User.findOne({ user_token });
 
-    return res.status(200).json({ questions: formatted });
+    if (!user) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    const totalAttempts =
+      (user.default_attempts || 0) + (user.maxi_attempts || 0);
+
+    if (totalAttempts > 0 || hasAnsweredToday(user)) {
+      return res.status(200).json({ available: false });
+    }
+
+    const nextQuestion = await findNextQuizQuestion(user);
+
+    if (!nextQuestion) {
+      // Вопросы в админке закончились — тот же ответ, что и при дневном лимите
+      return res.status(200).json({ available: false });
+    }
+
+    return res.status(200).json({
+      available: true,
+      question: {
+        id: nextQuestion._id,
+        question: nextQuestion.question,
+        answers: (nextQuestion.answers || []).map((a) => ({
+          id: a._id,
+          text: a.text,
+        })),
+      },
+    });
   } catch (err) {
     console.log(err);
     return res
       .status(500)
-      .json({ message: "Ошибка получения вопросов квиза" });
+      .json({ message: "Ошибка получения вопроса квиза" });
   }
 };
 
 export const submitQuiz = async (req, res) => {
   try {
     const user_token = req.user_token;
-    const { answers } = req.body;
+    const { questionId, answerId } = req.body;
 
-    if (!Array.isArray(answers) || answers.length === 0) {
+    if (!questionId || !answerId) {
       return res.status(400).json({ message: "Неверный формат ответа" });
     }
 
@@ -84,87 +119,65 @@ export const submitQuiz = async (req, res) => {
     if (totalAttempts > 0) {
       return res.status(400).json({
         message: "Квиз доступен только когда закончились попытки",
-        quizPassed: false,
       });
     }
 
-    const todayStr = getMoscowDateString();
-    const lastRewardStr = user.lastQuizAttemptAt
-      ? getMoscowDateString(user.lastQuizAttemptAt)
-      : null;
-
-    if (lastRewardStr === todayStr) {
+    if (hasAnsweredToday(user)) {
       return res.status(400).json({
-        message: "Награда за квиз уже получена сегодня, попробуйте завтра",
-        quizPassed: false,
-        alreadyRewardedToday: true,
+        message: "Квиз на сегодня уже пройден, попробуйте завтра",
+        available: false,
       });
     }
 
-    const questions = await QuizQuestion.find({ isActive: true }).lean();
+    const nextQuestion = await findNextQuizQuestion(user);
 
-    if (questions.length === 0) {
-      return res.status(400).json({ message: "Вопросы квиза не найдены" });
-    }
-
-    if (answers.length !== questions.length) {
+    if (!nextQuestion || String(nextQuestion._id) !== String(questionId)) {
       return res.status(400).json({
-        message: "Ответьте на все вопросы квиза",
-        quizPassed: false,
+        message: "Этот вопрос сейчас недоступен",
+        available: false,
       });
     }
 
-    const questionsMap = new Map(
-      questions.map((q) => [String(q._id), q]),
+    const answer = (nextQuestion.answers || []).find(
+      (a) => String(a._id) === String(answerId),
     );
 
-    let allCorrect = true;
-
-    for (const { questionId, answerId } of answers) {
-      const question = questionsMap.get(String(questionId));
-
-      if (!question) {
-        allCorrect = false;
-        break;
-      }
-
-      const answer = (question.answers || []).find(
-        (a) => String(a._id) === String(answerId),
-      );
-
-      if (!answer || !answer.isCorrect) {
-        allCorrect = false;
-        break;
-      }
+    if (!answer) {
+      return res.status(400).json({ message: "Неверный вариант ответа" });
     }
 
-    if (!allCorrect) {
-      return res.status(200).json({
-        message: "Есть неверные ответы, попробуйте ещё раз",
-        quizPassed: false,
-      });
+    const isCorrect = !!answer.isCorrect;
+
+    const update = {
+      $set: { lastQuizAnsweredAt: new Date() },
+      $push: {
+        quizAnsweredQuestions: {
+          question: nextQuestion._id,
+          isCorrect,
+          answeredAt: new Date(),
+        },
+      },
+    };
+
+    if (isCorrect) {
+      update.$inc = { maxi_attempts: 1 };
+      update.$push.attemptsAccrual = {
+        type: "QUIZ",
+        count: 1,
+        accrualAt: new Date(),
+      };
     }
 
     const updatedUser = await User.findOneAndUpdate(
       { user_token },
-      {
-        $inc: { maxi_attempts: 1 },
-        $set: { lastQuizAttemptAt: new Date() },
-        $push: {
-          attemptsAccrual: {
-            type: "QUIZ",
-            count: 1,
-            accrualAt: new Date(),
-          },
-        },
-      },
+      update,
       { new: true },
     );
 
     return res.status(200).json({
-      message: "Квиз пройден успешно! Начислена дополнительная попытка",
-      quizPassed: true,
-      awarded: { type: "QUIZ", count: 1 },
+      isCorrect,
+      rewardGranted: isCorrect,
+      comment: nextQuestion.comment || "",
       default_attempts: updatedUser.default_attempts,
       maxi_attempts: updatedUser.maxi_attempts,
     });

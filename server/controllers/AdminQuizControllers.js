@@ -18,7 +18,7 @@ export const getQuizQuestionsAdmin = async (req, res) => {
 
 export const createQuizQuestion = async (req, res) => {
   try {
-    const { question, answers, order, isActive } = req.body;
+    const { question, answers, comment, order, isActive } = req.body;
 
     if (!question || typeof question !== "string" || !question.trim()) {
       return res.status(400).json({ message: "Текст вопроса обязателен" });
@@ -48,6 +48,7 @@ export const createQuizQuestion = async (req, res) => {
         text: String(a.text).trim(),
         isCorrect: !!a.isCorrect,
       })),
+      comment: typeof comment === "string" ? comment.trim() : "",
       order: typeof order === "number" ? order : 0,
       isActive: isActive !== undefined ? !!isActive : true,
     });
@@ -64,7 +65,7 @@ export const createQuizQuestion = async (req, res) => {
 export const updateQuizQuestion = async (req, res) => {
   try {
     const { id } = req.params;
-    const { question, answers, order, isActive } = req.body;
+    const { question, answers, comment, order, isActive } = req.body;
 
     const update = {};
 
@@ -96,6 +97,13 @@ export const updateQuizQuestion = async (req, res) => {
         text: String(a.text).trim(),
         isCorrect: !!a.isCorrect,
       }));
+    }
+
+    if (comment !== undefined) {
+      if (typeof comment !== "string") {
+        return res.status(400).json({ message: "Неверный формат комментария" });
+      }
+      update.comment = comment.trim();
     }
 
     if (order !== undefined) {
