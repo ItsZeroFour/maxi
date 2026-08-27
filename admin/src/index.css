@@ -715,3 +715,31 @@ body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+.quiz-comment-preview {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.reward-select,
+.reward-input {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  min-width: 180px;
+}
+
+.reward-select:focus,
+.reward-input:focus {
+  border-color: var(--accent);
+}

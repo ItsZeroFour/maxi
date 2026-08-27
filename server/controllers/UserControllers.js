@@ -1,9 +1,9 @@
 import User from "../models/User.js";
+import LevelReward from "../models/LevelReward.js";
 import dotenv from "dotenv";
 import { promocodes } from "../data/promocodes.js";
 import stompit from "stompit";
 import fs from "fs";
-import { getMoscowDateString } from "../utils/moscowDate.js";
 
 dotenv.config();
 
@@ -13,6 +13,11 @@ const BOOSTER_TYPES = [
   "vspyshka_line5",
   "prizma_gt",
 ];
+
+const getMoscowDateString = (date = new Date()) => {
+  const moscowDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+  return moscowDate.toISOString().slice(0, 10);
+};
 
 export const userAuthorization = async (req, res) => {
   try {
@@ -33,7 +38,7 @@ export const userAuthorization = async (req, res) => {
         visitStreak: 1,
       }).save();
 
-      return res.status(200).json({ ...user._doc, showComebackModal: false });
+      return res.status(200).json({ ...user._doc });
     }
 
     const todayStr = getMoscowDateString();
@@ -41,14 +46,13 @@ export const userAuthorization = async (req, res) => {
       ? getMoscowDateString(user.lastVisitAt)
       : null;
 
-    let bonusLife = false;
-
     if (lastVisitStr !== todayStr) {
       const yesterdayStr = getMoscowDateString(
         new Date(Date.now() - 24 * 60 * 60 * 1000),
       );
 
       let newStreak;
+      let bonusLife = false;
 
       if (lastVisitStr === yesterdayStr) {
         newStreak = user.visitStreak + 1;
@@ -82,9 +86,7 @@ export const userAuthorization = async (req, res) => {
       );
     }
 
-    return res
-      .status(200)
-      .json({ ...user._doc, showComebackModal: bonusLife });
+    return res.status(200).json({ ...user._doc });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Ошибка сервера при авторизации" });
@@ -268,22 +270,29 @@ for (let level = 1; level <= 30; level++) {
 export const levelComplete = async (req, res) => {
   try {
     const levelCount = req.params.level;
+    const levelNum = Number(levelCount);
     const token = req.user_token;
 
     const user = await User.findOne({ user_token: token });
 
-    const reward = levelRewards[levelCount] || { type: "promocode" };
+    const rewardConfig = await LevelReward.findOne({ level: levelNum }).lean();
+
+    const reward = rewardConfig
+      ? rewardConfig.rewardType === "booster"
+        ? { type: "booster", booster: rewardConfig.boosterType, count: 1 }
+        : { type: "promocode", promocode: rewardConfig.promocode }
+      : levelRewards[levelCount] || { type: "promocode" };
 
     if (reward.type === "booster") {
       const updated = await User.findOneAndUpdate(
         { user_token: token },
         {
-          $inc: { [`boosters.${reward.booster}`]: reward.count },
+          $inc: { [`boosters.${reward.booster}`]: reward.count || 1 },
           $push: {
             completedLevels: { level: levelCount },
             boostersAccrual: {
               type: reward.booster,
-              count: reward.count,
+              count: reward.count || 1,
               accrualAt: new Date(),
             },
           },
@@ -296,14 +305,21 @@ export const levelComplete = async (req, res) => {
         is_promocode_get: false,
         is_booster_get: true,
         booster_type: reward.booster,
-        booster_count: reward.count,
+        booster_count: reward.count || 1,
         promocode: "",
         token,
       });
     }
 
-    // старая логика с промокодом
-    if (user.promo_codes.includes(promocodes[+levelCount - 1])) {
+    const promocode = reward.promocode || promocodes[levelNum - 1];
+
+    if (!promocode) {
+      return res.status(400).json({
+        message: "Для этого уровня не настроен приз",
+      });
+    }
+
+    if (user.promo_codes.includes(promocode)) {
       return res.status(201).json({
         message: "Промокод уже получен",
         is_promocode_get: false,
@@ -317,10 +333,10 @@ export const levelComplete = async (req, res) => {
       { user_token: token },
       {
         $push: {
-          promo_codes: promocodes[+levelCount - 1],
+          promo_codes: promocode,
           completedLevels: { level: levelCount },
           promoCodesLog: {
-            code: promocodes[+levelCount - 1],
+            code: promocode,
             receivedAt: new Date(),
           },
         },
@@ -331,7 +347,7 @@ export const levelComplete = async (req, res) => {
       message: "Промокод получен",
       is_promocode_get: true,
       is_booster_get: false,
-      promocode: promocodes[+levelCount - 1],
+      promocode,
       token,
     });
   } catch (err) {

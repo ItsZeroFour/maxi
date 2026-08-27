@@ -195,6 +195,189 @@ function OverviewTab() {
 
 // ==================== УРОВНИ ====================
 
+// ==================== НАГРАДЫ ЗА УРОВНИ ====================
+
+const BOOSTER_TYPE_OPTIONS = Object.keys(BOOSTER_LABELS);
+const TOTAL_LEVELS = 30;
+
+function LevelRewardRow({ level, config, onSaved }) {
+  const [rewardType, setRewardType] = useState(config?.rewardType || "");
+  const [promocode, setPromocode] = useState(config?.promocode || "");
+  const [boosterType, setBoosterType] = useState(
+    config?.boosterType || BOOSTER_TYPE_OPTIONS[0],
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const isDirty =
+    rewardType !== (config?.rewardType || "") ||
+    (rewardType === "promocode" && promocode !== (config?.promocode || "")) ||
+    (rewardType === "booster" &&
+      boosterType !== (config?.boosterType || BOOSTER_TYPE_OPTIONS[0]));
+
+  const handleSave = async () => {
+    setError("");
+
+    if (!rewardType) {
+      setError("Выберите тип приза");
+      return;
+    }
+    if (rewardType === "promocode" && !promocode.trim()) {
+      setError("Введите текст промокода");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.upsertLevelReward(level, {
+        rewardType,
+        promocode: rewardType === "promocode" ? promocode.trim() : undefined,
+        boosterType: rewardType === "booster" ? boosterType : undefined,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm(`Сбросить настройку приза для уровня ${level}?`)) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      await api.deleteLevelReward(level);
+      setRewardType("");
+      setPromocode("");
+      setBoosterType(BOOSTER_TYPE_OPTIONS[0]);
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr>
+      <td>{level}</td>
+      <td>
+        <select
+          className="reward-select"
+          value={rewardType}
+          onChange={(e) => setRewardType(e.target.value)}
+        >
+          <option value="">По умолчанию</option>
+          <option value="booster">Бустер</option>
+          <option value="promocode">Промокод</option>
+        </select>
+      </td>
+      <td>
+        {rewardType === "booster" && (
+          <select
+            className="reward-select"
+            value={boosterType}
+            onChange={(e) => setBoosterType(e.target.value)}
+          >
+            {BOOSTER_TYPE_OPTIONS.map((b) => (
+              <option key={b} value={b}>
+                {BOOSTER_LABELS[b]}
+              </option>
+            ))}
+          </select>
+        )}
+        {rewardType === "promocode" && (
+          <input
+            type="text"
+            className="reward-input"
+            placeholder="Текст промокода"
+            value={promocode}
+            onChange={(e) => setPromocode(e.target.value)}
+          />
+        )}
+        {!rewardType && <span className="table-total">не настроено</span>}
+      </td>
+      <td className="actions-cell">
+        <button
+          className="edit-btn"
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+        >
+          {saving ? "…" : "Сохранить"}
+        </button>
+        {config && (
+          <button className="edit-btn" onClick={handleReset} disabled={saving}>
+            Сбросить
+          </button>
+        )}
+        {error && (
+          <div className="login-error" style={{ marginTop: 6 }}>
+            {error}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function LevelRewardsPanel() {
+  const [rewards, setRewards] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    api
+      .getLevelRewards()
+      .then((res) => setRewards(res.rewards))
+      .catch((e) => setError(e.message));
+  };
+
+  useEffect(load, []);
+
+  if (error) return <div className="error-box">{error}</div>;
+  if (!rewards) return <div className="loading">Загрузка…</div>;
+
+  const configByLevel = new Map(rewards.map((r) => [r.level, r]));
+  const levels = Array.from({ length: TOTAL_LEVELS }, (_, i) => i + 1);
+
+  return (
+    <div className="panel">
+      <h3>Награды за уровни</h3>
+      <p className="table-total" style={{ marginBottom: 12 }}>
+        Для любого уровня можно назначить приз: бустер (выбрать тип) или
+        промокод (свой текст). Пока тип приза не выбран, уровень использует
+        поведение по умолчанию — чередование бустеров или старый список
+        промокодов.
+      </p>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Уровень</th>
+            <th>Тип приза</th>
+            <th>Значение</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {levels.map((level) => (
+            <LevelRewardRow
+              key={level}
+              level={level}
+              config={configByLevel.get(level)}
+              onSaved={load}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ==================== УРОВНИ ====================
+
 function LevelsTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -254,6 +437,8 @@ function LevelsTab() {
           </tbody>
         </table>
       </div>
+
+      <LevelRewardsPanel />
     </div>
   );
 }
@@ -331,6 +516,7 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
 
   const [form, setForm] = useState(() => ({
     question: question?.question || "",
+    comment: question?.comment || "",
     order: question?.order ?? 0,
     isActive: question?.isActive ?? true,
     answers:
@@ -394,6 +580,7 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
     try {
       const payload = {
         question: form.question.trim(),
+        comment: form.comment.trim(),
         order: Number(form.order) || 0,
         isActive: form.isActive,
         answers: form.answers.map((a) => ({
@@ -472,6 +659,17 @@ function QuizQuestionModal({ question, onClose, onSaved }) {
           + Добавить вариант
         </button>
 
+        <label className="quiz-field" style={{ marginTop: 16 }}>
+          Комментарий к вопросу
+          <textarea
+            className="quiz-textarea"
+            rows={2}
+            placeholder="Показывается пользователю после того, как он выберет ответ (при любом результате)"
+            value={form.comment}
+            onChange={(e) => setForm({ ...form, comment: e.target.value })}
+          />
+        </label>
+
         <div className="modal-row" style={{ marginTop: 16 }}>
           <label>
             Порядок показа
@@ -547,8 +745,11 @@ function QuizTab() {
       <div className="panel">
         <div className="table-toolbar">
           <span className="table-total">
-            Пользователь проходит квиз, когда у него закончились попытки.
-            Правильные ответы на все вопросы начисляют +1 попытку (раз в день).
+            Пользователю показывается один вопрос из этого списка в день (по
+            порядку, начиная с наименьшего "Порядок"), когда у него закончились
+            попытки. +1 попытка начисляется только за верный ответ, но вне
+            зависимости от результата квиз в этот день становится недоступен.
+            Когда активные вопросы заканчиваются, квиз перестаёт предлагаться.
           </span>
           <button className="btn-primary" onClick={() => setCreating(true)}>
             + Добавить вопрос
@@ -594,6 +795,10 @@ function QuizTab() {
                       </li>
                     ))}
                   </ul>
+
+                  {q.comment && (
+                    <div className="quiz-comment-preview">💬 {q.comment}</div>
+                  )}
 
                   <div className="actions-cell">
                     <button

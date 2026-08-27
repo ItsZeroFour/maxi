@@ -17,6 +17,11 @@ import {
   updateQuizQuestion,
   deleteQuizQuestion,
 } from "../controllers/AdminQuizControllers.js";
+import {
+  getLevelRewards,
+  upsertLevelReward,
+  deleteLevelReward,
+} from "../controllers/AdminLevelRewardsControllers.js";
 
 const router = Router();
 
@@ -35,5 +40,9 @@ router.get("/quiz", checkAdminToken, getQuizQuestionsAdmin);
 router.post("/quiz", checkAdminToken, createQuizQuestion);
 router.put("/quiz/:id", checkAdminToken, updateQuizQuestion);
 router.delete("/quiz/:id", checkAdminToken, deleteQuizQuestion);
+
+router.get("/level-rewards", checkAdminToken, getLevelRewards);
+router.put("/level-rewards/:level", checkAdminToken, upsertLevelReward);
+router.delete("/level-rewards/:level", checkAdminToken, deleteLevelReward);
 
 export default router;

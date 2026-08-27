@@ -118,4 +118,17 @@ export const api = {
     request(`/admin/quiz/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+
+  getLevelRewards: () => request("/admin/level-rewards"),
+
+  upsertLevelReward: (level, payload) =>
+    request(`/admin/level-rewards/${encodeURIComponent(level)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  deleteLevelReward: (level) =>
+    request(`/admin/level-rewards/${encodeURIComponent(level)}`, {
+      method: "DELETE",
+    }),
 };
