@@ -12,6 +12,8 @@ const User = new mongoose.Schema({
   promoCodesLog: [
     {
       code: { type: String, required: true },
+      name: { type: String, default: "" },
+      discount: { type: Number, default: null },
       receivedAt: { type: Date, default: Date.now },
     },
   ],
@@ -19,6 +21,8 @@ const User = new mongoose.Schema({
   activatedPromoCodesLog: [
     {
       code: { type: String, required: true },
+      name: { type: String, default: "" },
+      discount: { type: Number, default: null },
       activatedAt: { type: Date, default: Date.now },
     },
   ],

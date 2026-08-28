@@ -15,7 +15,13 @@ export const getLevelRewards = async (req, res) => {
 export const upsertLevelReward = async (req, res) => {
   try {
     const level = Number(req.params.level);
-    const { rewardType, promocode, boosterType } = req.body;
+    const {
+      rewardType,
+      promocode,
+      promocodeName,
+      promocodeDiscount,
+      boosterType,
+    } = req.body;
 
     if (!Number.isInteger(level) || level < 1) {
       return res.status(400).json({ message: "Неверный номер уровня" });
@@ -32,7 +38,21 @@ export const upsertLevelReward = async (req, res) => {
       if (!promocode || !String(promocode).trim()) {
         return res.status(400).json({ message: "Укажите текст промокода" });
       }
+      if (!promocodeName || !String(promocodeName).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Укажите название приза (promocodeName)" });
+      }
+      const discountNum = Number(promocodeDiscount);
+      if (!Number.isFinite(discountNum) || discountNum < 0) {
+        return res
+          .status(400)
+          .json({ message: "Укажите размер скидки числом ≥ 0 (promocodeDiscount)" });
+      }
+
       setFields.promocode = String(promocode).trim();
+      setFields.promocodeName = String(promocodeName).trim();
+      setFields.promocodeDiscount = discountNum;
       unsetFields.boosterType = "";
     } else {
       if (!BOOSTER_TYPES.includes(boosterType)) {
@@ -42,6 +62,8 @@ export const upsertLevelReward = async (req, res) => {
       }
       setFields.boosterType = boosterType;
       unsetFields.promocode = "";
+      unsetFields.promocodeName = "";
+      unsetFields.promocodeDiscount = "";
     }
 
     const saved = await LevelReward.findOneAndUpdate(

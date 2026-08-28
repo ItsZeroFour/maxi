@@ -727,6 +727,8 @@ body {
   margin-bottom: 12px;
 }
 
+/* ==================== НАГРАДЫ ЗА УРОВНИ ==================== */
+
 .reward-select,
 .reward-input {
   background: var(--panel-alt);
@@ -742,4 +744,15 @@ body {
 .reward-select:focus,
 .reward-input:focus {
   border-color: var(--accent);
+}
+
+.reward-promocode-fields {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reward-input-narrow {
+  min-width: 90px;
+  max-width: 90px;
 }

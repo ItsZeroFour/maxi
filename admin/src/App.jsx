@@ -203,6 +203,12 @@ const TOTAL_LEVELS = 30;
 function LevelRewardRow({ level, config, onSaved }) {
   const [rewardType, setRewardType] = useState(config?.rewardType || "");
   const [promocode, setPromocode] = useState(config?.promocode || "");
+  const [promocodeName, setPromocodeName] = useState(
+    config?.promocodeName || "",
+  );
+  const [promocodeDiscount, setPromocodeDiscount] = useState(
+    config?.promocodeDiscount ?? "",
+  );
   const [boosterType, setBoosterType] = useState(
     config?.boosterType || BOOSTER_TYPE_OPTIONS[0],
   );
@@ -211,7 +217,11 @@ function LevelRewardRow({ level, config, onSaved }) {
 
   const isDirty =
     rewardType !== (config?.rewardType || "") ||
-    (rewardType === "promocode" && promocode !== (config?.promocode || "")) ||
+    (rewardType === "promocode" &&
+      (promocode !== (config?.promocode || "") ||
+        promocodeName !== (config?.promocodeName || "") ||
+        String(promocodeDiscount) !==
+          String(config?.promocodeDiscount ?? ""))) ||
     (rewardType === "booster" &&
       boosterType !== (config?.boosterType || BOOSTER_TYPE_OPTIONS[0]));
 
@@ -222,9 +232,23 @@ function LevelRewardRow({ level, config, onSaved }) {
       setError("Выберите тип приза");
       return;
     }
-    if (rewardType === "promocode" && !promocode.trim()) {
-      setError("Введите текст промокода");
-      return;
+    if (rewardType === "promocode") {
+      if (!promocode.trim()) {
+        setError("Введите текст промокода");
+        return;
+      }
+      if (!promocodeName.trim()) {
+        setError("Введите название приза");
+        return;
+      }
+      if (
+        promocodeDiscount === "" ||
+        Number.isNaN(Number(promocodeDiscount)) ||
+        Number(promocodeDiscount) < 0
+      ) {
+        setError("Укажите размер скидки числом ≥ 0");
+        return;
+      }
     }
 
     setSaving(true);
@@ -232,6 +256,10 @@ function LevelRewardRow({ level, config, onSaved }) {
       await api.upsertLevelReward(level, {
         rewardType,
         promocode: rewardType === "promocode" ? promocode.trim() : undefined,
+        promocodeName:
+          rewardType === "promocode" ? promocodeName.trim() : undefined,
+        promocodeDiscount:
+          rewardType === "promocode" ? Number(promocodeDiscount) : undefined,
         boosterType: rewardType === "booster" ? boosterType : undefined,
       });
       onSaved();
@@ -253,6 +281,8 @@ function LevelRewardRow({ level, config, onSaved }) {
       await api.deleteLevelReward(level);
       setRewardType("");
       setPromocode("");
+      setPromocodeName("");
+      setPromocodeDiscount("");
       setBoosterType(BOOSTER_TYPE_OPTIONS[0]);
       onSaved();
     } catch (err) {
@@ -291,13 +321,30 @@ function LevelRewardRow({ level, config, onSaved }) {
           </select>
         )}
         {rewardType === "promocode" && (
-          <input
-            type="text"
-            className="reward-input"
-            placeholder="Текст промокода"
-            value={promocode}
-            onChange={(e) => setPromocode(e.target.value)}
-          />
+          <div className="reward-promocode-fields">
+            <input
+              type="text"
+              className="reward-input"
+              placeholder="Код (например СКИДКА15)"
+              value={promocode}
+              onChange={(e) => setPromocode(e.target.value)}
+            />
+            <input
+              type="text"
+              className="reward-input"
+              placeholder="Название приза"
+              value={promocodeName}
+              onChange={(e) => setPromocodeName(e.target.value)}
+            />
+            <input
+              type="number"
+              min="0"
+              className="reward-input reward-input-narrow"
+              placeholder="Скидка, %"
+              value={promocodeDiscount}
+              onChange={(e) => setPromocodeDiscount(e.target.value)}
+            />
+          </div>
         )}
         {!rewardType && <span className="table-total">не настроено</span>}
       </td>
@@ -744,6 +791,13 @@ function QuizTab() {
     <div className="tab-content">
       <div className="panel">
         <div className="table-toolbar">
+          <span className="table-total">
+            Пользователю показывается один вопрос из этого списка в день (по
+            порядку, начиная с наименьшего "Порядок"), когда у него закончились
+            попытки. +1 попытка начисляется только за верный ответ, но вне
+            зависимости от результата квиз в этот день становится недоступен.
+            Когда активные вопросы заканчиваются, квиз перестаёт предлагаться.
+          </span>
           <button className="btn-primary" onClick={() => setCreating(true)}>
             + Добавить вопрос
           </button>

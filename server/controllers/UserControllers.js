@@ -166,7 +166,6 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
-        // Определяем тип начисления (MAXI по умолчанию)
         const attemptType = attempt.type || "MAXI";
 
         const user = await User.findOneAndUpdate(
@@ -280,7 +279,15 @@ export const levelComplete = async (req, res) => {
     const reward = rewardConfig
       ? rewardConfig.rewardType === "booster"
         ? { type: "booster", booster: rewardConfig.boosterType, count: 1 }
-        : { type: "promocode", promocode: rewardConfig.promocode }
+        : {
+            type: "promocode",
+            promocode: rewardConfig.promocode,
+            promocodeName: rewardConfig.promocodeName || "",
+            promocodeDiscount:
+              typeof rewardConfig.promocodeDiscount === "number"
+                ? rewardConfig.promocodeDiscount
+                : null,
+          }
       : levelRewards[levelCount] || { type: "promocode" };
 
     if (reward.type === "booster") {
@@ -312,6 +319,11 @@ export const levelComplete = async (req, res) => {
     }
 
     const promocode = reward.promocode || promocodes[levelNum - 1];
+    const promocodeName = reward.promocodeName || "";
+    const promocodeDiscount =
+      typeof reward.promocodeDiscount === "number"
+        ? reward.promocodeDiscount
+        : null;
 
     if (!promocode) {
       return res.status(400).json({
@@ -337,6 +349,8 @@ export const levelComplete = async (req, res) => {
           completedLevels: { level: levelCount },
           promoCodesLog: {
             code: promocode,
+            name: promocodeName,
+            discount: promocodeDiscount,
             receivedAt: new Date(),
           },
         },
@@ -348,6 +362,8 @@ export const levelComplete = async (req, res) => {
       is_promocode_get: true,
       is_booster_get: false,
       promocode,
+      promocode_name: promocodeName,
+      promocode_discount: promocodeDiscount,
       token,
     });
   } catch (err) {
@@ -397,11 +413,6 @@ export const activatePromocode = async (req, res) => {
       rejectUnauthorized: false,
     };
 
-    const promoData = {
-      user_token: token,
-      promocode: promocode,
-    };
-
     const user = await User.findOne({ user_token: token });
 
     if (!user || !user.promo_codes.includes(promocode)) {
@@ -412,6 +423,21 @@ export const activatePromocode = async (req, res) => {
         message: "Не удалось найти промокод в полученных",
       });
     }
+
+    const logEntry = [...(user.promoCodesLog || [])]
+      .reverse()
+      .find((entry) => entry.code === promocode);
+
+    const promocodeName = logEntry?.name || "";
+    const promocodeDiscount =
+      typeof logEntry?.discount === "number" ? logEntry.discount : null;
+
+    const promoData = {
+      user_token: token,
+      promocode: promocode,
+      promocode_name: promocodeName,
+      promocode_discount: promocodeDiscount,
+    };
 
     const sendPromoData = () => {
       return new Promise((resolve, reject) => {
@@ -473,6 +499,8 @@ export const activatePromocode = async (req, res) => {
             activated_promo_codes: promocode,
             activatedPromoCodesLog: {
               code: promocode,
+              name: promocodeName,
+              discount: promocodeDiscount,
               activatedAt: new Date(),
             },
           },
@@ -482,6 +510,8 @@ export const activatePromocode = async (req, res) => {
       return res.status(200).json({
         activate_promocode: true,
         promocode: promocode,
+        promocode_name: promocodeName,
+        promocode_discount: promocodeDiscount,
         token,
       });
     } catch (err) {

@@ -1,3 +1,4 @@
+// server/models/LevelReward.js
 import mongoose from "mongoose";
 
 export const BOOSTER_TYPES = [
@@ -25,6 +26,16 @@ const LevelRewardSchema = new mongoose.Schema(
     promocode: {
       type: String,
       trim: true,
+    },
+
+    promocodeName: {
+      type: String,
+      trim: true,
+    },
+
+    promocodeDiscount: {
+      type: Number,
+      min: 0,
     },
 
     boosterType: {
