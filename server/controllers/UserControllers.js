@@ -31,6 +31,7 @@ export const userAuthorization = async (req, res) => {
 
     let user = await User.findOne({ user_token: userToken });
 
+    // Новый пользователь — просто фиксируем первый визит
     if (!user) {
       user = await new User({
         user_token: userToken,
@@ -41,11 +42,13 @@ export const userAuthorization = async (req, res) => {
       return res.status(200).json({ ...user._doc });
     }
 
+    // --- Логика ежедневного стрика заходов ---
     const todayStr = getMoscowDateString();
     const lastVisitStr = user.lastVisitAt
       ? getMoscowDateString(user.lastVisitAt)
       : null;
 
+    // Если пользователь уже заходил сегодня — ничего не пересчитываем
     if (lastVisitStr !== todayStr) {
       const yesterdayStr = getMoscowDateString(
         new Date(Date.now() - 24 * 60 * 60 * 1000),
@@ -55,12 +58,15 @@ export const userAuthorization = async (req, res) => {
       let bonusLife = false;
 
       if (lastVisitStr === yesterdayStr) {
+        // Заход идёт следующим днём после предыдущего — стрик продолжается
         newStreak = user.visitStreak + 1;
 
         if (newStreak >= 2) {
+          // Со 2-го дня подряд и далее начисляем бонусную жизнь
           bonusLife = true;
         }
       } else {
+        // Разрыв в днях (пропустил день или первый заход за долгое время)
         newStreak = 1;
       }
 
@@ -122,9 +128,28 @@ export const userGet = async (req, res) => {
       };
     });
 
+    // Тот же промокод, что и в promo_codes (строкой), но с названием
+    // и скидкой — эти данные хранятся в promoCodesLog при выдаче.
+    const sortedPromoCodesLog = (user.promoCodesLog || [])
+      .slice()
+      .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+
+    const formattedPromoCodesLog = sortedPromoCodesLog.map((entry) => {
+      const date = new Date(entry.receivedAt);
+      const moscowTime = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+
+      return {
+        code: entry.code,
+        name: entry.name || "",
+        discount: typeof entry.discount === "number" ? entry.discount : null,
+        receivedAt: moscowTime.toISOString().slice(0, 19),
+      };
+    });
+
     return res.status(200).json({
       user_token: user.user_token,
       promo_codes: user.promo_codes,
+      promoCodesLog: formattedPromoCodesLog,
       activated_promo_codes: user.activated_promo_codes,
       default_attempts: user.default_attempts,
       maxi_attempts: user.maxi_attempts,
@@ -166,6 +191,7 @@ export const addAttempts = async (req, res) => {
           continue;
         }
 
+        // Определяем тип начисления (MAXI по умолчанию)
         const attemptType = attempt.type || "MAXI";
 
         const user = await User.findOneAndUpdate(
@@ -274,6 +300,8 @@ export const levelComplete = async (req, res) => {
 
     const user = await User.findOne({ user_token: token });
 
+    // Награда, настроенная в админке, имеет приоритет над старым поведением
+    // по умолчанию (ротация бустеров / статический список промокодов).
     const rewardConfig = await LevelReward.findOne({ level: levelNum }).lean();
 
     const reward = rewardConfig
@@ -318,6 +346,9 @@ export const levelComplete = async (req, res) => {
       });
     }
 
+    // Промокод: либо кастомный текст, заданный в админке для этого уровня,
+    // либо старый статический список promocodes.js (обратная совместимость —
+    // для этих "старых" кодов name/discount не заданы, поэтому будут null/"")
     const promocode = reward.promocode || promocodes[levelNum - 1];
     const promocodeName = reward.promocodeName || "";
     const promocodeDiscount =
@@ -401,8 +432,7 @@ export const activatePromocode = async (req, res) => {
     const promocode = req.body.promocode;
 
     const connectOptions = {
-      // host: "mq-prod-purple.maxi-retail.ru",
-      host: "mq-test.maxi-retail.ru",
+      host: "mq-prod-purple.maxi-retail.ru",
       port: 61612,
       ssl: true,
       connectHeaders: {
@@ -425,6 +455,9 @@ export const activatePromocode = async (req, res) => {
       });
     }
 
+    // Достаём name/discount из истории начислений этого пользователя —
+    // это единственное место, где они сохранены на момент выдачи промокода.
+    // Берём самую последнюю запись по коду на случай повторной выдачи.
     const logEntry = [...(user.promoCodesLog || [])]
       .reverse()
       .find((entry) => entry.code === promocode);
