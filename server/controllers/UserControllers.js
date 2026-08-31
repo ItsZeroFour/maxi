@@ -401,7 +401,8 @@ export const activatePromocode = async (req, res) => {
     const promocode = req.body.promocode;
 
     const connectOptions = {
-      host: "mq-prod-purple.maxi-retail.ru",
+      // host: "mq-prod-purple.maxi-retail.ru",
+      host: "mq-test.maxi-retail.ru",
       port: 61612,
       ssl: true,
       connectHeaders: {
